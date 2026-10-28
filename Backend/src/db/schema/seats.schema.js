@@ -1,0 +1,24 @@
+// id
+// auditorium_id
+// seat_number
+// category
+// created_at
+
+import { serial,integer,timestamp, pgTable, text, pgEnum } from "drizzle-orm/pg-core";
+import { auditoriums } from "../schema/auditorium.schema.js";
+
+export const enumSeats = pgEnum("category",["standard","prime","vip lounge"])
+
+export const seats = pgTable("seats", {
+    id: serial("id").primaryKey().notNull(),
+
+    auditorium_id: integer("auditorium_id")
+        .references(() => auditoriums.id)
+        .notNull(),
+
+    seat_number: text("seat_number").notNull(),
+
+    seat_category: enumSeats("seat_category").notNull(),
+
+    created_at: timestamp("created_at").defaultNow()
+});

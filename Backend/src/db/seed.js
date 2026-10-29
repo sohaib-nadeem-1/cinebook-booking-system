@@ -13,11 +13,7 @@ import { showtimes } from "./schema/showTime.schema.js";
 async function seed() {
     try {
         console.log(" Seeding database...\n");
-
-        // =========================
-        // 1. USERS
-        // =========================
-
+      
         const hashedAdminPassword = await bcrypt.hash("Admin@123", 10);
         const hashedStaffPassword = await bcrypt.hash("Staff@123", 10);
         const hashedCustomerPassword = await bcrypt.hash("User@123", 10);

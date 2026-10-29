@@ -1,4 +1,4 @@
-import { user } from "../db/schema/user.schema.js";
+import { user } from "../db/Schema/user.schema.js";
 import { db } from "../db/index.js";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
@@ -8,31 +8,29 @@ import config from "../config/config.data.js";
 
 
 export const registerApi = async (req, res) => {
-  const { email, username } = req.body;
-  // const data = req.body;
-  const password = req.body.password;
+  const {  name, email, password, phone  } = req.body;
+
   const hashPassword = await bcrypt.hash(password, 10);
   // console.log(password);
 
   const findEmail = await db.select().from(user).where(eq(user.email, email));
-  const findUsername = await db
-    .select()
-    .from(user)
-    .where(eq(user.username, username));
-  if (findEmail.length > 0 || findUsername.length > 0) {
-    res.status(409).json({
-      Message: "username or email already exist",
+  
+  if (findEmail.length > 0) {
+   return res.status(409).json({
+      Message: " email already exist",
     });
   }
 
   const data = {
-    ...req.body,
+    name : name,
+    email : email,
+    phone: phone,
     password: hashPassword,
   };
   
   const savingUser = await db.insert(user).values(data).returning();
   const token = jwt.sign(
-    {userID : savingUser[0].id, role : savingUser[0].role},
+    {userID : savingUser[0].id,},
       config.JWT_SECRET_KEY,
     {expiresIn: "1d"}
   )
@@ -41,7 +39,6 @@ export const registerApi = async (req, res) => {
 
   res.status(201).json({
     message: "User Created SucessFully ",
-    savingUser,
     token
   });
 };
@@ -49,9 +46,25 @@ export const registerApi = async (req, res) => {
 
 export const loginApi = async(req,res)=>{
     const {email,password}=req.body;
-    const id = req.params.id;
+   
 
-    const getUserdata =await db.select().from(user).where(eq(id,user.id))
+    const getUseremail =await db.select().from(user).where(eq(email,user.email));
+
+    if(!getUseremail){
+    return  res.status(401).json({
+        message : "User Email Not Found"
+      })
+    }
+    const getUserpassword =await db.select().from(user).where(eq(password,user.password));
+    const checkingPassword = bcrypt.compare(password,getUserpassword)
+
+ if(!checkingPassword){
+    return  res.status(401).json({
+        message : "User password is Incorrect"
+      })
+    }
+
+    
 
     res.status(200).json({
         Message : "Data Get SucessFUlly",

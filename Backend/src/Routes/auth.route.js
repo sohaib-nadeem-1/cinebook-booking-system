@@ -6,5 +6,5 @@ import { loginApi, registerApi } from "../controllers/auth.controller.js";
 const router = express.Router();
 
 router.post("/register",registerApi)
-router.get("/login",loginApi)
+router.post("/login",loginApi)
 export default router;

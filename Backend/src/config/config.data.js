@@ -1,7 +1,7 @@
 import { configDotenv } from "dotenv";
 configDotenv()
 
-if(!process.env.DATABASE_URI){
+if(!process.env.DATABASE_URL){
     console.log("DB URl IS NOT FETCHING OR INCRORRECT URL");
     
 }
@@ -12,7 +12,7 @@ if(!process.env.JWT_SECRET_KEY){
 }
 
 const config = {
-  DATABASE_URI : process.env.DATABASE_URI,
+  DATABASE_URL : process.env.DATABASE_URL,
  JWT_SECRET_KEY : process.env.JWT_SECRET_KEY,
 }
 

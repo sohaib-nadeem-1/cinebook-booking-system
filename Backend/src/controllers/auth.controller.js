@@ -5,6 +5,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import config from "../config/config.data.js";
 
+
 export const registerApi = async (req, res) => {
   const { name, email, password, phone } = req.body;
 
@@ -57,10 +58,6 @@ export const loginApi = async (req, res) => {
     password,
     exixtingUser.password,
   );
-
-  console.log("Entered:", password);
-console.log("Stored:", exixtingUser.password);
-console.log("Compare:", checkingPassword);
 
   if (!checkingPassword) {
     return res.status(401).json({

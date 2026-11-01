@@ -7,7 +7,7 @@ import {
     timestamp
 } from "drizzle-orm/pg-core";
 
-import { user } from "../schema/user.schema.js";
+import { user } from "../Schema/user.schema.js";
 import { showtimes } from "../schema/showTime.schema.js";
 
 export const enumStatus = pgEnum(

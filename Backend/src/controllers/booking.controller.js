@@ -48,7 +48,7 @@ const wrongSeats = checkSeats.some((chkseats)=>{
 
 if(wrongSeats){
     res.status(404).json({
-        message : "Audit"
+        message : "Selected seat does not belong to this auditoriumudit"
     })
 }
 

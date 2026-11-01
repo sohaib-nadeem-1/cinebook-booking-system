@@ -18,4 +18,6 @@ app.use(express.json());
 app.use("/api",authRouter);
 app.use("/api",movieRouter);
 app.use("/showtime",showTimeRouter)
+app.use("/api",bookingRouter)
+
 export default app;

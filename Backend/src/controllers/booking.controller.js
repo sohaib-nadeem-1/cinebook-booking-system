@@ -3,7 +3,7 @@
 
 
 
-export const bookings = (req,res)=>{
+export const createBookings = (req,res)=>{
     const bbokingData = req.body;
-    
+
 }

@@ -17,6 +17,7 @@ console.log(seatsCounted);
 
     const checkShowID =await db.select().from(showtimes).where(eq(showtimes.id,showtimeId));
     // console.log(checkShowID);
+    const showAuditoriumID = checkShowID[0].auditorium_id;
     
     if(checkShowID.length===0){
        return res.status(404).json({
@@ -38,15 +39,12 @@ console.log(seatsCounted);
 // compare
 //         ↓
 // each selected seat auditorium_id
+
+
   
-const showAudiToriumID = db.select().from(showtimes).where(eq(showtimes.auditorium_id,seatsID.auditorium_id));
-
-if(showAudiToriumID.length===0){
-    res.status(404).json({
-        message : "audiTrouim Id Not FOund"
-    })
-}
-
+const wrongSeats = checkSeats.some((chkseats)=>{
+    checkSeats!==checkShowID.au
+})
 
 
 

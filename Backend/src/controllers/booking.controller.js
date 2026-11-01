@@ -43,7 +43,7 @@ console.log(seatsCounted);
 
   
 const wrongSeats = checkSeats.some((chkseats)=>{
-    checkSeats!==showAuditoriumID
+    checkSeats.auditorium_id!==showAuditoriumID
 })
 
 if(wrongSeats){

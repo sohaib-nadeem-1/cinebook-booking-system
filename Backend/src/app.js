@@ -4,7 +4,7 @@ import dotenv from "dotenv";
 import authRouter from "./Routes/auth.route.js";
 import movieRouter from "./Routes/movies.routes.js"
 import showTimeRouter from "./Routes/showtime.route.js"
-
+import bookingRouter from "./Routes/booking.routes.js"
 
 dotenv.config()
 

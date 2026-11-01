@@ -43,8 +43,14 @@ console.log(seatsCounted);
 
   
 const wrongSeats = checkSeats.some((chkseats)=>{
-    checkSeats!==checkShowID.au
+    checkSeats!==showAuditoriumID
 })
+
+if(wrongSeats){
+    res.status(404).json({
+        message : "Audit"
+    })
+}
 
 
 

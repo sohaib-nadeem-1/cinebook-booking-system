@@ -348,10 +348,9 @@ export const cancelBooking = async (req, res) => {
     }
 
     const currentBooking = existingBooking[0];
-
-    // ----------------------------------------------
+ 
     // Check current status
-    // ----------------------------------------------
+ 
 
     if (currentBooking.status === "cancelled") {
       return res.status(400).json({
@@ -364,11 +363,9 @@ export const cancelBooking = async (req, res) => {
         message: "Refunded booking cannot be cancelled",
       });
     }
-
-    // ----------------------------------------------
+ 
     // Cancel booking
-    // ----------------------------------------------
-
+     
     const [cancelledBooking] = await db
       .update(booking)
       .set({

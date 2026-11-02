@@ -10,7 +10,7 @@ const router = express.Router();
 
 
 
-router.post("/bookings",authMiddleware,roleMiddleware("customer"),createBookings)
+router.post("/bookings",authMiddleware,roleMiddleware("customer","staff"),createBookings)
 
 
 

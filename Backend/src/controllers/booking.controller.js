@@ -397,11 +397,9 @@ export const cancelBooking = async (req, res) => {
     });
   }
 };
-
-
-// ======================================================
+ 
 // 5. ADMIN / STAFF - GET ALL BOOKINGS
-// ======================================================
+ 
 
 export const getAllBookings = async (req, res) => {
   try {
@@ -423,12 +421,9 @@ export const getAllBookings = async (req, res) => {
     });
   }
 };
-
-
-// ======================================================
+ 
 // 6. ADMIN / STAFF - GET ANY BOOKING
-// ======================================================
-
+ 
 export const getBookingByIdAdmin = async (req, res) => {
   try {
     const bookingId = Number(req.params.id);
@@ -439,10 +434,9 @@ export const getBookingByIdAdmin = async (req, res) => {
       });
     }
 
-    // ----------------------------------------------
+     
     // Get booking
-    // ----------------------------------------------
-
+     
     const result = await db
       .select()
       .from(booking)

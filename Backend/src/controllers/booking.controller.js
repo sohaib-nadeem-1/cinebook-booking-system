@@ -326,10 +326,9 @@ export const cancelBooking = async (req, res) => {
         message: "Invalid booking ID",
       });
     }
-
-    // ----------------------------------------------
+ 
     // Find user's booking
-    // ----------------------------------------------
+ 
 
     const existingBooking = await db
       .select()

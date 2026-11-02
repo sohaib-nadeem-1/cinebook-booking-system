@@ -247,12 +247,11 @@ export const getMyBookings = async (req, res) => {
       message: "Internal Server Error",
     });
   }
-};
+}; 
 
 
-// ======================================================
 // 3. GET SINGLE BOOKING
-// ======================================================
+ 
 
 export const getSingleBooking = async (req, res) => {
   try {
@@ -264,10 +263,9 @@ export const getSingleBooking = async (req, res) => {
         message: "Invalid booking ID",
       });
     }
-
-    // ----------------------------------------------
+ 
     // Find user's booking
-    // ----------------------------------------------
+ 
 
     const result = await db
       .select()
@@ -284,11 +282,9 @@ export const getSingleBooking = async (req, res) => {
         message: "Booking Not Found",
       });
     }
-
-    // ----------------------------------------------
+ 
     // Get booked seats
-    // ----------------------------------------------
-
+    
     const selectedSeats = await db
       .select()
       .from(booking_seats)

@@ -311,10 +311,8 @@ export const getSingleBooking = async (req, res) => {
   }
 };
 
-
-// ======================================================
 // 4. CANCEL MY BOOKING
-// ======================================================
+ 
 
 export const cancelBooking = async (req, res) => {
   try {

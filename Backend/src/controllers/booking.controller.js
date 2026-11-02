@@ -454,10 +454,8 @@ export const getBookingByIdAdmin = async (req, res) => {
       });
     }
 
-    // ----------------------------------------------
     // Get seats
-    // ----------------------------------------------
-
+    
     const selectedSeats = await db
       .select()
       .from(booking_seats)
@@ -480,10 +478,7 @@ export const getBookingByIdAdmin = async (req, res) => {
   }
 };
 
-
-// ======================================================
 // 7. ADMIN / STAFF - CANCEL ANY BOOKING
-// ======================================================
 
 export const adminCancelBooking = async (req, res) => {
   try {

@@ -180,10 +180,9 @@ export const createBookings = async (req, res) => {
           status: "confirmed",
         })
         .returning();
-
-      // ------------------------------------------------
+ 
       // STEP 10: Create Booking Seats
-      // ------------------------------------------------
+    
 
       await tx
         .insert(booking_seats)
@@ -196,11 +195,9 @@ export const createBookings = async (req, res) => {
         );
 
       return newBooking;
-    });
-
-    // --------------------------------------------------
+    }); 
     // STEP 11: Success Response
-    // --------------------------------------------------
+ 
 
     return res.status(201).json({
       message: "Booking Created Successfully",
@@ -222,9 +219,8 @@ export const createBookings = async (req, res) => {
 };
 
 
-// ======================================================
 // 2. GET MY BOOKINGS
-// ======================================================
+
 
 export const getMyBookings = async (req, res) => {
   try {

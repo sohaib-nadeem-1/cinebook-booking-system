@@ -495,10 +495,9 @@ export const adminCancelBooking = async (req, res) => {
       });
     }
 
-    // ----------------------------------------------
+  
     // Find booking
-    // ----------------------------------------------
-
+   
     const existingBooking = await db
       .select()
       .from(booking)
@@ -512,9 +511,9 @@ export const adminCancelBooking = async (req, res) => {
 
     const currentBooking = existingBooking[0];
 
-    // ----------------------------------------------
+    
     // Check status
-    // ----------------------------------------------
+   
 
     if (currentBooking.status === "cancelled") {
       return res.status(400).json({
@@ -528,9 +527,9 @@ export const adminCancelBooking = async (req, res) => {
       });
     }
 
-    // ----------------------------------------------
+    
     // Cancel booking
-    // ----------------------------------------------
+    
 
     const [cancelledBooking] = await db
       .update(booking)

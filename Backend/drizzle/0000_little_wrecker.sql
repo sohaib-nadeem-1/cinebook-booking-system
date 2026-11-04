@@ -83,6 +83,7 @@ CREATE TABLE "users" (
 	"email" text NOT NULL,
 	"password" text NOT NULL,
 	"phone" text,
+	"city" text,
 	"role" "user_role" DEFAULT 'customer' NOT NULL,
 	"status" "user_status" DEFAULT 'active' NOT NULL,
 	"created_at" timestamp DEFAULT now(),

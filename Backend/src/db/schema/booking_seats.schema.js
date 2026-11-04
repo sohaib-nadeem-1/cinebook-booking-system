@@ -7,7 +7,7 @@
 
 import { serial,integer,numeric,timestamp, pgTable } from "drizzle-orm/pg-core";
 import { booking } from "./bookings.schema.js";
-import { seats } from "../schema/seats.schema.js";
+import { seats } from "../Schema/seats.schema.js";
 
 export const booking_seats = pgTable("booking_seats",{
     id: serial("id").notNull().primaryKey(),

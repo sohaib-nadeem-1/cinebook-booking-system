@@ -8,20 +8,13 @@ import { seats } from "../db/Schema/seats.schema.js";
 import { booking } from "../db/Schema/bookings.schema.js";
 import { booking_seats } from "../db/Schema/booking_seats.schema.js";
 
-
-// ======================================================
-// 1. CREATE BOOKING
-// ======================================================
+ 
 
 export const createBookings = async (req, res) => {
   try {
     const { showtimeId, seatsID } = req.body;
 
     const userid = req.user.userid;
-
-    // --------------------------------------------------
-    // STEP 1: Basic Validation
-    // --------------------------------------------------
 
     if (
       !showtimeId ||
@@ -33,7 +26,7 @@ export const createBookings = async (req, res) => {
       });
     }
 
-    // Remove duplicate seat IDs
+   
     const uniqueSeatsID = [...new Set(seatsID)];
 
     if (uniqueSeatsID.length !== seatsID.length) {

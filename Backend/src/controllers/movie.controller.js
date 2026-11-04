@@ -1,6 +1,6 @@
 
 import { db } from "../db/index.js";
-// import { movies } from "../db/schema/movies.schema.js";
+import { movies } from "../db/schema/movies.schema.js";
 import { eq } from "drizzle-orm";
 import { showtimes } from "../db/schema/showTime.schema.js";
 

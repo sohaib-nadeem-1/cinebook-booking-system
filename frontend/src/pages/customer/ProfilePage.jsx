@@ -211,15 +211,7 @@ export default function ProfilePage() {
             </Badge>
           </div>
 
-          <p className="mt-3 text-label-sm text-on-surface-variant flex items-center justify-center gap-1.5">
-            <Calendar className="w-3.5 h-3.5" aria-hidden />
-
-            Member since{' '}
-
-            {user.created_at
-              ? formatDate(user.created_at, { year: true })
-              : 'N/A'}
-          </p>
+         
 
           <Button
             variant="secondary"

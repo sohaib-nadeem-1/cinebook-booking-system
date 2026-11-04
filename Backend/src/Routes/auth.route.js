@@ -1,5 +1,5 @@
 import express from "express";
-import { loginApi, registerApi } from "../controllers/auth.controller.js";
+import { changePasswordApi, loginApi, registerApi } from "../controllers/auth.controller.js";
 import { profileApi } from "../controllers/profile.controller.js";
 import { authMiddleware } from "../Middlewares/auth.middleware.js";
 import { testController } from "../controllers/test.controller.js";

@@ -12,5 +12,10 @@ const router = express.Router();
 router.post("/register",registerApi)
 router.post("/login",loginApi);
 router.get("/profile",authMiddleware,profileApi);
+router.patch(
+  "/change-password",
+  authMiddleware,
+  changePasswordApi
+);
 router.get("/admin-test",authMiddleware,roleMiddleware("admin"),testController)
 export default router;

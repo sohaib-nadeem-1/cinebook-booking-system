@@ -4,7 +4,7 @@ import jwt from "jsonwebtoken";
 import { eq } from "drizzle-orm";
 
 import { db } from "../db/index.js";
-import { user } from "../db/schema/user.schema.js";
+import { user } from "../db/Schema/user.schema.js";
 import config from "../config/config.data.js";
 
 // ==========================================

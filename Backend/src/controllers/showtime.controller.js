@@ -1,10 +1,44 @@
-import { and, eq, gt, lt } from "drizzle-orm";
+
+import { and, eq, gt, lt, getTableColumns } from "drizzle-orm";
+
 import { db } from "../db/index.js";
 import { auditoriums } from "../db/schema/auditorium.schema.js";
+import { cinemas } from "../db/schema/cinemas.schema.js";
 import { movies } from "../db/schema/movies.schema.js";
 import { showtimes } from "../db/schema/showTime.schema.js";
 
- 
+// Reusable query for showtime details with auditorium and cinema
+const getShowtimesWithDetails = () => {
+  return db
+    .select({
+      ...getTableColumns(showtimes),
+
+      auditorium: {
+        id: auditoriums.id,
+        cinema_id: auditoriums.cinema_id,
+        hall_no: auditoriums.hall_no,
+      },
+
+      cinema: {
+        id: cinemas.id,
+        name: cinemas.name,
+        city: cinemas.city,
+        address: cinemas.address,
+        phone: cinemas.phone,
+      },
+    })
+    .from(showtimes)
+    .leftJoin(
+      auditoriums,
+      eq(showtimes.auditorium_id, auditoriums.id)
+    )
+    .leftJoin(
+      cinemas,
+      eq(auditoriums.cinema_id, cinemas.id)
+    );
+};
+
+// CREATE SHOWTIME
 
 export const createShowtime = async (req, res) => {
   try {
@@ -19,25 +53,31 @@ export const createShowtime = async (req, res) => {
       prime_price,
     } = req.body;
 
-
-    // Basic validation
-
-    if (!movie_id || !auditorium_id || !format || !date || !start_time || !end_time) {
+    if (
+      !movie_id ||
+      !auditorium_id ||
+      !format ||
+      !date ||
+      !start_time ||
+      !end_time
+    ) {
       return res.status(400).json({
         message: "Required fields are missing",
       });
     }
 
-if (
-  standard_price === undefined ||
-  prime_price === undefined ||
-  Number(standard_price) <= 0 ||
-  Number(prime_price) <= 0
-) {
-  return res.status(400).json({
-    message: "Valid ticket prices are required",
-  });
-}
+    if (
+      standard_price === undefined ||
+      prime_price === undefined ||
+      Number(standard_price) <= 0 ||
+      Number(prime_price) <= 0 ||
+      !Number.isFinite(Number(standard_price)) ||
+      !Number.isFinite(Number(prime_price))
+    ) {
+      return res.status(400).json({
+        message: "Valid ticket prices are required",
+      });
+    }
 
     if (end_time <= start_time) {
       return res.status(400).json({
@@ -45,13 +85,10 @@ if (
       });
     }
 
-
-    // Check movie
-
     const movie = await db
       .select()
       .from(movies)
-      .where(eq(movies.id, movie_id));
+      .where(eq(movies.id, Number(movie_id)));
 
     if (movie.length === 0) {
       return res.status(404).json({
@@ -59,13 +96,10 @@ if (
       });
     }
 
-
-    // Check auditorium
-
     const auditorium = await db
       .select()
       .from(auditoriums)
-      .where(eq(auditoriums.id, auditorium_id));
+      .where(eq(auditoriums.id, Number(auditorium_id)));
 
     if (auditorium.length === 0) {
       return res.status(404).json({
@@ -73,15 +107,12 @@ if (
       });
     }
 
-
-    // Check Showtime Conflict
-
     const conflictingShowtimes = await db
       .select()
       .from(showtimes)
       .where(
         and(
-          eq(showtimes.auditorium_id, auditorium_id),
+          eq(showtimes.auditorium_id, Number(auditorium_id)),
           eq(showtimes.date, date),
           lt(showtimes.start_time, end_time),
           gt(showtimes.end_time, start_time)
@@ -94,14 +125,11 @@ if (
       });
     }
 
-
-    // Create Showtime
-
     const insertingShowtime = await db
       .insert(showtimes)
       .values({
-        movie_id,
-        auditorium_id,
+        movie_id: Number(movie_id),
+        auditorium_id: Number(auditorium_id),
         format,
         date,
         start_time,
@@ -111,14 +139,13 @@ if (
       })
       .returning();
 
-
     return res.status(201).json({
       message: "Showtime created successfully",
       insertingShowtime,
     });
 
   } catch (error) {
-    console.error(error);
+    console.error("Create Showtime Error:", error);
 
     return res.status(500).json({
       message: "Failed to create showtime",
@@ -126,18 +153,11 @@ if (
   }
 };
 
-
- 
-// GET ALL SHOWTIMES
- 
+// GET ALL SHOWTIMES WITH AUDITORIUM AND CINEMA
 
 export const getAllShowtimes = async (req, res) => {
   try {
-
-    const allShowtimes = await db
-      .select()
-      .from(showtimes);
-
+    const allShowtimes = await getShowtimesWithDetails();
 
     return res.status(200).json({
       message: "All showtimes fetched successfully",
@@ -145,7 +165,7 @@ export const getAllShowtimes = async (req, res) => {
     });
 
   } catch (error) {
-    console.error(error);
+    console.error("Get All Showtimes Error:", error);
 
     return res.status(500).json({
       message: "Failed to fetch showtimes",
@@ -153,28 +173,20 @@ export const getAllShowtimes = async (req, res) => {
   }
 };
 
- 
-// GET SINGLE SHOWTIME
- 
+// GET SINGLE SHOWTIME WITH AUDITORIUM AND CINEMA
 
 export const getSingleShowtime = async (req, res) => {
   try {
-
     const id = Number(req.params.id);
 
-
-    if (!id) {
+    if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({
-        message: "Showtime ID is required",
+        message: "Valid Showtime ID is required",
       });
     }
 
-
-    const showtime = await db
-      .select()
-      .from(showtimes)
+    const showtime = await getShowtimesWithDetails()
       .where(eq(showtimes.id, id));
-
 
     if (showtime.length === 0) {
       return res.status(404).json({
@@ -182,14 +194,13 @@ export const getSingleShowtime = async (req, res) => {
       });
     }
 
-
     return res.status(200).json({
       message: "Showtime fetched successfully",
       showtime,
     });
 
   } catch (error) {
-    console.error(error);
+    console.error("Get Single Showtime Error:", error);
 
     return res.status(500).json({
       message: "Failed to fetch showtime",
@@ -197,23 +208,17 @@ export const getSingleShowtime = async (req, res) => {
   }
 };
 
-
- 
 // UPDATE SHOWTIME
- 
 
 export const updateShowtime = async (req, res) => {
   try {
-
     const id = Number(req.params.id);
 
-
-    if (!id) {
+    if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({
-        message: "Showtime ID is required",
+        message: "Valid Showtime ID is required",
       });
     }
-
 
     const {
       movie_id,
@@ -225,9 +230,6 @@ export const updateShowtime = async (req, res) => {
       standard_price,
       prime_price,
     } = req.body;
-
-
-    // Basic validation
 
     if (
       !movie_id ||
@@ -242,20 +244,18 @@ export const updateShowtime = async (req, res) => {
       });
     }
 
-
-    if (standard_price <= 0) {
+    if (
+      standard_price === undefined ||
+      prime_price === undefined ||
+      !Number.isFinite(Number(standard_price)) ||
+      !Number.isFinite(Number(prime_price)) ||
+      Number(standard_price) <= 0 ||
+      Number(prime_price) <= 0
+    ) {
       return res.status(400).json({
-        message: "Standard price must be greater than 0",
+        message: "Valid ticket prices are required",
       });
     }
-
-
-    if (prime_price <= 0) {
-      return res.status(400).json({
-        message: "Prime price must be greater than 0",
-      });
-    }
-
 
     if (end_time <= start_time) {
       return res.status(400).json({
@@ -263,14 +263,10 @@ export const updateShowtime = async (req, res) => {
       });
     }
 
-
-    // Check movie
-
     const movie = await db
       .select()
       .from(movies)
-      .where(eq(movies.id, movie_id));
-
+      .where(eq(movies.id, Number(movie_id)));
 
     if (movie.length === 0) {
       return res.status(404).json({
@@ -278,14 +274,10 @@ export const updateShowtime = async (req, res) => {
       });
     }
 
-
-    // Check auditorium
-
     const auditorium = await db
       .select()
       .from(auditoriums)
-      .where(eq(auditoriums.id, auditorium_id));
-
+      .where(eq(auditoriums.id, Number(auditorium_id)));
 
     if (auditorium.length === 0) {
       return res.status(404).json({
@@ -293,26 +285,32 @@ export const updateShowtime = async (req, res) => {
       });
     }
 
+    const existingShowtime = await db
+      .select()
+      .from(showtimes)
+      .where(eq(showtimes.id, id));
 
-    // Check conflict excluding current showtime
+    if (existingShowtime.length === 0) {
+      return res.status(404).json({
+        message: "Showtime not found",
+      });
+    }
 
     const conflictingShowtimes = await db
       .select()
       .from(showtimes)
       .where(
         and(
-          eq(showtimes.auditorium_id, auditorium_id),
+          eq(showtimes.auditorium_id, Number(auditorium_id)),
           eq(showtimes.date, date),
           lt(showtimes.start_time, end_time),
           gt(showtimes.end_time, start_time)
         )
       );
 
-
     const realConflict = conflictingShowtimes.filter(
       (showtime) => showtime.id !== id
     );
-
 
     if (realConflict.length > 0) {
       return res.status(409).json({
@@ -320,14 +318,11 @@ export const updateShowtime = async (req, res) => {
       });
     }
 
-
-    // Update
-
     const updatedShowtime = await db
       .update(showtimes)
       .set({
-        movie_id,
-        auditorium_id,
+        movie_id: Number(movie_id),
+        auditorium_id: Number(auditorium_id),
         format,
         date,
         start_time,
@@ -339,21 +334,13 @@ export const updateShowtime = async (req, res) => {
       .where(eq(showtimes.id, id))
       .returning();
 
-
-    if (updatedShowtime.length === 0) {
-      return res.status(404).json({
-        message: "Showtime not found",
-      });
-    }
-
-
     return res.status(200).json({
       message: "Showtime updated successfully",
       updatedShowtime,
     });
 
   } catch (error) {
-    console.error(error);
+    console.error("Update Showtime Error:", error);
 
     return res.status(500).json({
       message: "Failed to update showtime",
@@ -361,45 +348,28 @@ export const updateShowtime = async (req, res) => {
   }
 };
 
-
- 
 // DELETE SHOWTIME
- 
+
 export const deleteShowtime = async (req, res) => {
   try {
-
     const id = Number(req.params.id);
 
-
-    if (!id) {
+    if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({
-        message: "Showtime ID is required",
+        message: "Valid Showtime ID is required",
       });
     }
-
-
-    // Check existence
-
-    const existingShowtime = await db
-      .select()
-      .from(showtimes)
-      .where(eq(showtimes.id, id));
-
-
-    if (existingShowtime.length === 0) {
-      return res.status(404).json({
-        message: "Showtime not found",
-      });
-    }
-
-
-    // Delete
 
     const deletedShowtime = await db
       .delete(showtimes)
       .where(eq(showtimes.id, id))
       .returning();
 
+    if (deletedShowtime.length === 0) {
+      return res.status(404).json({
+        message: "Showtime not found",
+      });
+    }
 
     return res.status(200).json({
       message: "Showtime deleted successfully",
@@ -407,7 +377,7 @@ export const deleteShowtime = async (req, res) => {
     });
 
   } catch (error) {
-    console.error(error);
+    console.error("Delete Showtime Error:", error);
 
     return res.status(500).json({
       message: "Failed to delete showtime",

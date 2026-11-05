@@ -11,30 +11,22 @@ dotenv.config();
 
 const app = express();
 
-// Global Middleware
 app.use(cors());
 app.use(express.json());
 
-// Health Check
 app.get("/", (req, res) => {
   res.status(200).json({
     message: "CineBook API is running",
   });
 });
 
-// Booking Routes
+app.use("/api", authRouter);
+app.use("/api", movieRouter);
 app.use("/api/bookings", bookingRouter);
 
-// Authentication Routes
-app.use("/api", authRouter);
+// Showtime routes now use the same /api base URL.
+app.use("/api/showtime", showTimeRouter);
 
-// Movie Routes
-app.use("/api", movieRouter);
-
-// Showtime Routes
-app.use("/showtime", showTimeRouter);
-
-// 404 Handler
 app.use((req, res) => {
   res.status(404).json({
     message: "Route Not Found",

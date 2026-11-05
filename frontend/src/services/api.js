@@ -1,5 +1,6 @@
 const API_BASE_URL =
-  import.meta.env.VITE_API_URL || "http://localhost:3000/api";
+  import.meta.env.VITE_API_URL ||
+  "http://localhost:3000/api";
 
 let latency = import.meta.env.MODE === "test" ? 0 : 450;
 
@@ -7,7 +8,8 @@ export const setLatency = (ms) => {
   latency = ms;
 };
 
-const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const wait = (ms) =>
+  new Promise((resolve) => setTimeout(resolve, ms));
 
 export async function simulate(fn, ms) {
   await wait(ms ?? latency);
@@ -17,6 +19,7 @@ export async function simulate(fn, ms) {
 export class ApiError extends Error {
   constructor(message, code = "ERROR", status = null) {
     super(message);
+
     this.name = "ApiError";
     this.code = code;
     this.status = status;
@@ -27,7 +30,7 @@ export async function apiRequest(endpoint, options = {}) {
   const token = localStorage.getItem("token");
 
   const headers = {
-    "Content-Type": "application/json",
+    ...(options.body ? { "Content-Type": "application/json" } : {}),
     ...(options.headers || {}),
   };
 
@@ -35,17 +38,26 @@ export async function apiRequest(endpoint, options = {}) {
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    ...options,
-    headers,
-  });
+  let response;
+
+  try {
+    response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      ...options,
+      headers,
+    });
+  } catch (error) {
+    throw new ApiError(
+      "Unable to connect to the server. Please try again.",
+      "NETWORK_ERROR"
+    );
+  }
 
   let data = null;
 
   try {
     data = await response.json();
   } catch {
-    // Empty response
+    // Response body may be empty.
   }
 
   if (!response.ok) {

@@ -8,201 +8,214 @@ import { seats } from "../db/Schema/seats.schema.js";
 import { booking } from "../db/Schema/bookings.schema.js";
 import { booking_seats } from "../db/Schema/booking_seats.schema.js";
 
- 
+// Helper for expected booking errors
+const createBookingError = (statusCode, message, extra = {}) => {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  error.extra = extra;
+  return error;
+};
+
+// 1. CREATE BOOKING
 
 export const createBookings = async (req, res) => {
   try {
     const { showtimeId, seatsID } = req.body;
+    const userid = Number(req.user.userid);
+    const parsedShowtimeId = Number(showtimeId);
 
-    const userid = req.user.userid;
-
+    // STEP 1: Validate request data
     if (
-      !showtimeId ||
+      !Number.isInteger(parsedShowtimeId) ||
+      parsedShowtimeId <= 0 ||
       !Array.isArray(seatsID) ||
       seatsID.length === 0
     ) {
       return res.status(400).json({
-        message: "Showtime ID and seats are required",
+        message: "A valid showtime ID and at least one seat are required",
       });
     }
 
-   
-    const uniqueSeatsID = [...new Set(seatsID)];
+    if (!Number.isInteger(userid) || userid <= 0) {
+      return res.status(401).json({
+        message: "Invalid authenticated user",
+      });
+    }
 
-    if (uniqueSeatsID.length !== seatsID.length) {
+    const uniqueSeatsID = seatsID.map(Number);
+
+    if (
+      uniqueSeatsID.some(
+        (seatId) => !Number.isInteger(seatId) || seatId <= 0
+      )
+    ) {
+      return res.status(400).json({
+        message: "All seat IDs must be valid positive integers",
+      });
+    }
+
+    if (new Set(uniqueSeatsID).size !== uniqueSeatsID.length) {
       return res.status(400).json({
         message: "Duplicate seats are not allowed",
       });
     }
 
-    // --------------------------------------------------
-    // STEP 2: Check Showtime
-    // --------------------------------------------------
+    // STEP 2: Transaction-based booking
+    const createdBooking = await db.transaction(async (tx) => {
+      // Lock showtime row to prevent concurrent booking conflicts
+      const [show] = await tx
+        .select()
+        .from(showtimes)
+        .where(eq(showtimes.id, parsedShowtimeId))
+        .for("update");
 
-    const checkShowID = await db
-      .select()
-      .from(showtimes)
-      .where(eq(showtimes.id, showtimeId));
-
-    if (checkShowID.length === 0) {
-      return res.status(404).json({
-        message: "Showtime Not Found",
-      });
-    }
-
-    const show = checkShowID[0];
-
-    const showAuditoriumID = show.auditorium_id;
-
-    // --------------------------------------------------
-    // STEP 3: Check Selected Seats
-    // --------------------------------------------------
-
-    const checkSeats = await db
-      .select()
-      .from(seats)
-      .where(inArray(seats.id, uniqueSeatsID));
-
-    if (checkSeats.length !== uniqueSeatsID.length) {
-      return res.status(404).json({
-        message: "One or more selected seats not found",
-      });
-    }
-
-    // --------------------------------------------------
-    // STEP 4: Check Auditorium
-    // --------------------------------------------------
-
-    const wrongSeats = checkSeats.some(
-      (seat) => seat.auditorium_id !== showAuditoriumID
-    );
-
-    if (wrongSeats) {
-      return res.status(400).json({
-        message: "Selected seat does not belong to this auditorium",
-      });
-    }
-
-    // --------------------------------------------------
-    // STEP 5: Check Already Booked Seats
-    // --------------------------------------------------
-
-    const alreadyBookedSeats = await db
-      .select({
-        seat_id: booking_seats.seat_id,
-      })
-      .from(booking_seats)
-      .innerJoin(
-        booking,
-        eq(booking_seats.booking_id, booking.id)
-      )
-      .where(
-        and(
-          eq(booking.showtime_id, showtimeId),
-          inArray(booking_seats.seat_id, uniqueSeatsID),
-          eq(booking.status, "confirmed")
-        )
-      );
-
-    if (alreadyBookedSeats.length > 0) {
-      const bookedSeatIds = alreadyBookedSeats.map(
-        (seat) => seat.seat_id
-      );
-
-      return res.status(409).json({
-        message: "Some selected seats are already booked",
-        bookedSeats: bookedSeatIds,
-      });
-    }
-
-    // --------------------------------------------------
-    // STEP 6: Calculate Individual Seat Prices
-    // --------------------------------------------------
-
-    const seatsWithPrice = checkSeats.map((seat) => {
-      let price;
-
-      if (seat.seat_category === "standard") {
-        price = show.standard_price;
-      } else if (seat.seat_category === "prime") {
-        price = show.prime_price;
-      } else {
-        return null;
+      if (!show) {
+        throw createBookingError(404, "Showtime not found");
       }
 
-      return {
-        seat_id: seat.id,
-        price: price,
-      };
-    });
+      // STEP 3: Fetch selected seats
+      const selectedSeats = await tx
+        .select()
+        .from(seats)
+        .where(inArray(seats.id, uniqueSeatsID));
 
-    // Check invalid seat category
-    if (seatsWithPrice.some((seat) => seat === null)) {
-      return res.status(400).json({
-        message: "Invalid seat category",
+      if (selectedSeats.length !== uniqueSeatsID.length) {
+        throw createBookingError(
+          404,
+          "One or more selected seats were not found"
+        );
+      }
+
+      // STEP 4: Validate auditorium
+      const wrongSeats = selectedSeats.some(
+        (seat) => seat.auditorium_id !== show.auditorium_id
+      );
+
+      if (wrongSeats) {
+        throw createBookingError(
+          400,
+          "Selected seat does not belong to this auditorium"
+        );
+      }
+
+      // STEP 5: Check already booked seats
+      const alreadyBookedSeats = await tx
+        .select({
+          seat_id: booking_seats.seat_id,
+        })
+        .from(booking_seats)
+        .innerJoin(
+          booking,
+          eq(booking_seats.booking_id, booking.id)
+        )
+        .where(
+          and(
+            eq(booking.showtime_id, parsedShowtimeId),
+            inArray(booking_seats.seat_id, uniqueSeatsID),
+            eq(booking.status, "confirmed")
+          )
+        );
+
+      if (alreadyBookedSeats.length > 0) {
+        const bookedSeatIds = alreadyBookedSeats.map(
+          (seat) => seat.seat_id
+        );
+
+        throw createBookingError(
+          409,
+          "Some selected seats are already booked",
+          { bookedSeats: bookedSeatIds }
+        );
+      }
+
+      // STEP 6: Calculate individual seat prices
+      const seatsWithPrice = selectedSeats.map((seat) => {
+        let price;
+
+        if (seat.seat_category === "standard") {
+          price = show.standard_price;
+        } else if (seat.seat_category === "prime") {
+          price = show.prime_price;
+        } else {
+          throw createBookingError(
+            400,
+            `Unsupported seat category: ${seat.seat_category}`
+          );
+        }
+
+        const numericPrice = Number(price);
+
+        if (!Number.isFinite(numericPrice) || numericPrice < 0) {
+          throw createBookingError(
+            400,
+            "Invalid price configured for this showtime"
+          );
+        }
+
+        return {
+          seat_id: seat.id,
+          price: numericPrice.toFixed(2),
+        };
       });
-    }
 
-    // --------------------------------------------------
-    // STEP 7: Calculate Total
-    // --------------------------------------------------
+      // STEP 7: Calculate total amount in cents
+      const totalCents = seatsWithPrice.reduce((total, seat) => {
+        return total + Math.round(Number(seat.price) * 100);
+      }, 0);
 
-    const totalAmount = seatsWithPrice.reduce(
-      (total, seat) => {
-        return total + Number(seat.price);
-      },
-      0
-    );
+      const totalAmount = (totalCents / 100).toFixed(2);
 
-    // --------------------------------------------------
-    // STEP 8: Transaction
-    // --------------------------------------------------
-
-    const createdBooking = await db.transaction(async (tx) => {
-
-      // ------------------------------------------------
-      // STEP 9: Create Booking
-      // ------------------------------------------------
-
+      // STEP 8: Create booking
       const [newBooking] = await tx
         .insert(booking)
         .values({
           user_id: userid,
-          showtime_id: showtimeId,
-          total_amount: totalAmount.toString(),
+          showtime_id: parsedShowtimeId,
+          total_amount: totalAmount,
           status: "confirmed",
         })
         .returning();
- 
-      // STEP 10: Create Booking Seats
-    
 
+      // STEP 9: Create booking seats
       await tx
         .insert(booking_seats)
         .values(
           seatsWithPrice.map((seat) => ({
             booking_id: newBooking.id,
             seat_id: seat.seat_id,
-            price: seat.price.toString(),
+            price: seat.price,
           }))
         );
 
-      return newBooking;
-    }); 
-    // STEP 11: Success Response
- 
+      return {
+        booking: newBooking,
+        seats: seatsWithPrice,
+        totalAmount,
+      };
+    });
 
+    // STEP 10: Success response
     return res.status(201).json({
-      message: "Booking Created Successfully",
-
-      booking: createdBooking,
-
-      seats: seatsWithPrice,
-
-      totalAmount: totalAmount,
+      message: "Booking created successfully",
+      booking: createdBooking.booking,
+      seats: createdBooking.seats,
+      totalAmount: createdBooking.totalAmount,
     });
 
   } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({
+        message: error.message,
+        ...error.extra,
+      });
+    }
+
+    if (error.code === "23505") {
+      return res.status(409).json({
+        message: "A selected seat conflicts with an existing booking",
+      });
+    }
+
     console.error("Create Booking Error:", error);
 
     return res.status(500).json({
@@ -211,9 +224,7 @@ export const createBookings = async (req, res) => {
   }
 };
 
-
 // 2. GET MY BOOKINGS
-
 
 export const getMyBookings = async (req, res) => {
   try {
@@ -236,25 +247,20 @@ export const getMyBookings = async (req, res) => {
       message: "Internal Server Error",
     });
   }
-}; 
-
+};
 
 // 3. GET SINGLE BOOKING
- 
 
 export const getSingleBooking = async (req, res) => {
   try {
     const bookingId = Number(req.params.id);
     const userid = req.user.userid;
 
-    if (Number.isNaN(bookingId)) {
+    if (!Number.isInteger(bookingId) || bookingId <= 0) {
       return res.status(400).json({
         message: "Invalid booking ID",
       });
     }
- 
-    // Find user's booking
- 
 
     const result = await db
       .select()
@@ -268,12 +274,10 @@ export const getSingleBooking = async (req, res) => {
 
     if (result.length === 0) {
       return res.status(404).json({
-        message: "Booking Not Found",
+        message: "Booking not found",
       });
     }
- 
-    // Get booked seats
-    
+
     const selectedSeats = await db
       .select()
       .from(booking_seats)
@@ -281,9 +285,7 @@ export const getSingleBooking = async (req, res) => {
 
     return res.status(200).json({
       message: "Booking fetched successfully",
-
       booking: result[0],
-
       seats: selectedSeats,
     });
 
@@ -297,21 +299,17 @@ export const getSingleBooking = async (req, res) => {
 };
 
 // 4. CANCEL MY BOOKING
- 
 
 export const cancelBooking = async (req, res) => {
   try {
     const bookingId = Number(req.params.id);
     const userid = req.user.userid;
 
-    if (Number.isNaN(bookingId)) {
+    if (!Number.isInteger(bookingId) || bookingId <= 0) {
       return res.status(400).json({
         message: "Invalid booking ID",
       });
     }
- 
-    // Find user's booking
- 
 
     const existingBooking = await db
       .select()
@@ -325,14 +323,11 @@ export const cancelBooking = async (req, res) => {
 
     if (existingBooking.length === 0) {
       return res.status(404).json({
-        message: "Booking Not Found",
+        message: "Booking not found",
       });
     }
 
     const currentBooking = existingBooking[0];
- 
-    // Check current status
- 
 
     if (currentBooking.status === "cancelled") {
       return res.status(400).json({
@@ -345,9 +340,7 @@ export const cancelBooking = async (req, res) => {
         message: "Refunded booking cannot be cancelled",
       });
     }
- 
-    // Cancel booking
-     
+
     const [cancelledBooking] = await db
       .update(booking)
       .set({
@@ -364,7 +357,6 @@ export const cancelBooking = async (req, res) => {
 
     return res.status(200).json({
       message: "Booking cancelled successfully",
-
       booking: cancelledBooking,
     });
 
@@ -376,9 +368,8 @@ export const cancelBooking = async (req, res) => {
     });
   }
 };
- 
+
 // 5. ADMIN / STAFF - GET ALL BOOKINGS
- 
 
 export const getAllBookings = async (req, res) => {
   try {
@@ -388,7 +379,6 @@ export const getAllBookings = async (req, res) => {
 
     return res.status(200).json({
       message: "All bookings fetched successfully",
-
       bookings: allBookings,
     });
 
@@ -400,22 +390,19 @@ export const getAllBookings = async (req, res) => {
     });
   }
 };
- 
+
 // 6. ADMIN / STAFF - GET ANY BOOKING
- 
+
 export const getBookingByIdAdmin = async (req, res) => {
   try {
     const bookingId = Number(req.params.id);
 
-    if (Number.isNaN(bookingId)) {
+    if (!Number.isInteger(bookingId) || bookingId <= 0) {
       return res.status(400).json({
         message: "Invalid booking ID",
       });
     }
 
-     
-    // Get booking
-     
     const result = await db
       .select()
       .from(booking)
@@ -423,12 +410,10 @@ export const getBookingByIdAdmin = async (req, res) => {
 
     if (result.length === 0) {
       return res.status(404).json({
-        message: "Booking Not Found",
+        message: "Booking not found",
       });
     }
 
-    // Get seats
-    
     const selectedSeats = await db
       .select()
       .from(booking_seats)
@@ -436,9 +421,7 @@ export const getBookingByIdAdmin = async (req, res) => {
 
     return res.status(200).json({
       message: "Booking fetched successfully",
-
       booking: result[0],
-
       seats: selectedSeats,
     });
 
@@ -457,15 +440,12 @@ export const adminCancelBooking = async (req, res) => {
   try {
     const bookingId = Number(req.params.id);
 
-    if (Number.isNaN(bookingId)) {
+    if (!Number.isInteger(bookingId) || bookingId <= 0) {
       return res.status(400).json({
         message: "Invalid booking ID",
       });
     }
 
-  
-    // Find booking
-   
     const existingBooking = await db
       .select()
       .from(booking)
@@ -473,15 +453,11 @@ export const adminCancelBooking = async (req, res) => {
 
     if (existingBooking.length === 0) {
       return res.status(404).json({
-        message: "Booking Not Found",
+        message: "Booking not found",
       });
     }
 
     const currentBooking = existingBooking[0];
-
-    
-    // Check status
-   
 
     if (currentBooking.status === "cancelled") {
       return res.status(400).json({
@@ -495,10 +471,6 @@ export const adminCancelBooking = async (req, res) => {
       });
     }
 
-    
-    // Cancel booking
-    
-
     const [cancelledBooking] = await db
       .update(booking)
       .set({
@@ -510,7 +482,6 @@ export const adminCancelBooking = async (req, res) => {
 
     return res.status(200).json({
       message: "Booking cancelled successfully",
-
       booking: cancelledBooking,
     });
 

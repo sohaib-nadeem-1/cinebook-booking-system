@@ -1,4 +1,3 @@
-
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Link,
@@ -45,7 +44,6 @@ import { showtimeService } from "../../services/showtimeService.js";
 
 import { tierPrices } from "../../data/seats.js";
 import { CAST_PHOTOS } from "../../data/images.js";
-import { CINEMAS, AUDITORIUMS } from "../../data/cinemas.js";
 
 import { useAsync } from "../../hooks/useAsync.js";
 import { useToast } from "../../context/ToastContext.jsx";
@@ -91,17 +89,16 @@ const getCinema = (showtime) => {
 
   const cinemaId = Number(showtime.cinemaId);
 
-  return (
-    CINEMAS.find((cinema) => Number(cinema.id) === cinemaId) || {
-      id: cinemaId || "unknown",
-      name: cinemaId ? `Cinema ${cinemaId}` : "Cinema",
-      short: cinemaId ? `Cinema ${cinemaId}` : "Cinema",
-      tag: "",
-      distance: "",
-      area: "",
-      amenities: [],
-    }
-  );
+  return {
+    id: cinemaId || "unknown",
+    name: cinemaId ? `Cinema ${cinemaId}` : "Cinema",
+    city: "",
+    address: "",
+    tag: "",
+    distance: "",
+    area: "",
+    amenities: [],
+  };
 };
 
 const getAuditorium = (showtime) => {
@@ -109,15 +106,11 @@ const getAuditorium = (showtime) => {
 
   const auditoriumId = Number(showtime.auditoriumId);
 
-  return (
-    AUDITORIUMS.find(
-      (auditorium) => Number(auditorium.id) === auditoriumId
-    ) || {
-      id: auditoriumId,
-      name: `Hall ${auditoriumId}`,
-      spec: showtime.format || "Standard",
-    }
-  );
+  return {
+    id: auditoriumId,
+    name: `Hall ${auditoriumId}`,
+    spec: showtime.format || "Standard",
+  };
 };
 
 function ShowtimePill({ st, onPick }) {
@@ -267,6 +260,18 @@ export default function MovieDetailsPage() {
   );
 
   const preferred = params.get("cinema") || cinemaId;
+
+  const cityLabel = useMemo(() => {
+    const cities = [
+      ...new Set(
+        (shows.data || [])
+          .map((showtime) => showtime.cinema?.city)
+          .filter(Boolean)
+      ),
+    ];
+
+    return cities.length ? `${cities.join(", ")}, Pakistan` : "Pakistan";
+  }, [shows.data]);
 
   const advanced = useRef(false);
 
@@ -693,7 +698,7 @@ export default function MovieDetailsPage() {
           <p className="flex items-center gap-2 text-body-sm text-on-surface-variant">
             <MapPin className="w-4 h-4 text-secondary" aria-hidden />
             Showing near{" "}
-            <b className="text-white">Manhattan, NY</b>
+            <b className="text-white">{cityLabel}</b>
           </p>
         </div>
 
@@ -853,18 +858,21 @@ export default function MovieDetailsPage() {
                         </div>
 
                         <h3 className="mt-2 font-headline text-headline-sm text-white">
-                          {cinema.name} – {cinema.short}
+                          {cinema.name}
                         </h3>
 
-                        {(cinema.distance || cinema.area) && (
+                        {(cinema.city ||
+                          cinema.address ||
+                          cinema.distance ||
+                          cinema.area) && (
                           <p className="mt-1 flex items-center gap-1.5 text-body-sm text-on-surface-variant">
                             <Navigation
                               className="w-3.5 h-3.5 text-secondary"
                               aria-hidden
                             />
-                            {cinema.distance}
-                            {cinema.distance && cinema.area ? " • " : ""}
-                            {cinema.area}
+                            {[cinema.city, cinema.address || cinema.area]
+                              .filter(Boolean)
+                              .join(" • ")}
                           </p>
                         )}
                       </div>
@@ -957,7 +965,7 @@ export default function MovieDetailsPage() {
                 </p>
 
                 <p className="text-body-sm text-on-surface-variant truncate">
-                  {getCinema(nextShow).short || "Cinema"} •{" "}
+                  {getCinema(nextShow).name || "Cinema"} •{" "}
                   <span className="text-secondary">
                     {formatDate(nextShow.date, {
                       weekday: true,

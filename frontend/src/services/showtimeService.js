@@ -1,6 +1,6 @@
+
 import { api, ApiError } from "./api.js";
 import { movieService } from "./movieService.js";
-import { AUDITORIUMS, CINEMAS } from "../data/cinemas.js";
 
 export const CONFLICT_MESSAGE =
   "This auditorium already has a scheduled screening during this time.";
@@ -39,6 +39,8 @@ const getShowStatus = (date, start) => {
     : "completed";
 };
 
+// VALIDATION
+
 const validate = (data) => {
   const errors = {};
 
@@ -70,11 +72,11 @@ const validate = (data) => {
     data.primePrice ?? data.price
   );
 
-  if (!(standardPrice > 0)) {
+  if (!(standardPrice > 0) || !Number.isFinite(standardPrice)) {
     errors.price = "Enter a valid standard ticket price";
   }
 
-  if (!(primePrice > 0)) {
+  if (!(primePrice > 0) || !Number.isFinite(primePrice)) {
     errors.primePrice = "Enter a valid prime ticket price";
   }
 
@@ -89,15 +91,8 @@ const validate = (data) => {
   return errors;
 };
 
-/**
- * Converts backend showtime fields into the frontend structure.
- *
- * Backend:
- * movie_id, auditorium_id, start_time, end_time
- *
- * Frontend:
- * movieId, auditoriumId, start, end
- */
+// MAP BACKEND DATA TO FRONTEND STRUCTURE
+
 const mapShowtime = (showtime, movies = []) => {
   const movieId = toNumber(showtime.movie_id);
   const auditoriumId = toNumber(showtime.auditorium_id);
@@ -105,16 +100,34 @@ const mapShowtime = (showtime, movies = []) => {
   const movie =
     movies.find((item) => toNumber(item.id) === movieId) || null;
 
-  const auditorium =
-    AUDITORIUMS.find(
-      (item) => toNumber(item.id) === auditoriumId
-    ) || null;
+  // Actual auditorium data from backend JOIN
+  const rawAuditorium = showtime.auditorium || null;
 
-  const cinema =
-    CINEMAS.find(
-      (item) =>
-        toNumber(item.id) === toNumber(auditorium?.cinemaId)
-    ) || null;
+  const auditorium = rawAuditorium
+    ? {
+        ...rawAuditorium,
+        id: toNumber(rawAuditorium.id),
+        cinemaId: toNumber(rawAuditorium.cinema_id),
+        hall_no: toNumber(rawAuditorium.hall_no),
+
+        // Compatibility with existing frontend components
+        name: `Hall ${rawAuditorium.hall_no}`,
+        spec: showtime.format || "",
+      }
+    : null;
+
+  // Actual cinema data from backend JOIN
+  const rawCinema = showtime.cinema || null;
+
+  const cinema = rawCinema
+    ? {
+        ...rawCinema,
+        id: toNumber(rawCinema.id),
+
+        // Compatibility with existing UI
+        short: rawCinema.name,
+      }
+    : null;
 
   const start = normalizeTime(showtime.start_time);
   const end = normalizeTime(showtime.end_time);
@@ -124,7 +137,11 @@ const mapShowtime = (showtime, movies = []) => {
 
     movieId,
     auditoriumId,
-    cinemaId: auditorium?.cinemaId ?? null,
+
+    cinemaId:
+      cinema?.id ??
+      auditorium?.cinemaId ??
+      null,
 
     movie,
 
@@ -156,6 +173,8 @@ const mapShowtime = (showtime, movies = []) => {
   };
 };
 
+// FETCH MOVIES
+
 const getMovieList = async () => {
   return movieService.list({
     scope: "admin",
@@ -163,11 +182,15 @@ const getMovieList = async () => {
   });
 };
 
+// FETCH ALL RAW SHOWTIMES
+
 const getRawShowtimes = async () => {
   const response = await api.get(`${API_ENDPOINT}/get-show`);
 
   return getArrayResult(response, "allShowtimes");
 };
+
+// FETCH SINGLE RAW SHOWTIME
 
 const getRawShowtime = async (id) => {
   const response = await api.get(
@@ -186,6 +209,8 @@ const getRawShowtime = async (id) => {
 
   return showtime;
 };
+
+// MAP FRONTEND DATA TO BACKEND PAYLOAD
 
 const toBackendPayload = (data) => {
   const standardPrice = Number(
@@ -211,23 +236,24 @@ const toBackendPayload = (data) => {
   };
 };
 
-/**
- * Fetches all showtimes and attaches movie/cinema/auditorium data.
- */
+// HYDRATE SINGLE SHOWTIME
+
 export const hydrate = async (showtime) => {
   if (!showtime) return null;
 
-  const [movies] = await Promise.all([
+  const [rawShowtime, movies] = await Promise.all([
+    showtime.auditorium && showtime.cinema
+      ? Promise.resolve(showtime)
+      : getRawShowtime(showtime.id),
+
     getMovieList(),
   ]);
 
-  return mapShowtime(showtime, movies);
+  return mapShowtime(rawShowtime, movies);
 };
 
-/**
- * Backend handles actual auditorium conflict validation.
- * This helper checks conflicts against currently fetched showtimes.
- */
+// CHECK SHOWTIME CONFLICT
+
 export const findConflict = async (
   candidate,
   ignoreId = null
@@ -261,10 +287,11 @@ export const findConflict = async (
   );
 };
 
+// SHOWTIME SERVICE
+
 export const showtimeService = {
-  /**
-   * GET ALL SHOWTIMES
-   */
+  // GET ALL SHOWTIMES
+
   list: async ({
     movieId,
     cinemaId,
@@ -321,7 +348,8 @@ export const showtimeService = {
           const searchableText = [
             showtime.movie.title,
             showtime.auditorium?.name,
-            showtime.cinema?.short,
+            showtime.cinema?.name,
+            showtime.cinema?.city,
             showtime.format,
           ]
             .filter(Boolean)
@@ -342,9 +370,8 @@ export const showtimeService = {
       );
   },
 
-  /**
-   * GET SINGLE SHOWTIME
-   */
+  // GET SINGLE SHOWTIME
+
   get: async (id) => {
     const [rawShowtime, movies] = await Promise.all([
       getRawShowtime(id),
@@ -354,9 +381,8 @@ export const showtimeService = {
     return mapShowtime(rawShowtime, movies);
   },
 
-  /**
-   * GET NEXT UPCOMING SHOW FOR EACH MOVIE
-   */
+  // GET NEXT UPCOMING SHOW FOR EACH MOVIE
+
   nextByMovie: async () => {
     const allShowtimes = await showtimeService.list({
       includePast: false,
@@ -375,9 +401,8 @@ export const showtimeService = {
     return map;
   },
 
-  /**
-   * GET UPCOMING DATES FOR A MOVIE
-   */
+  // GET UPCOMING DATES FOR A MOVIE
+
   datesFor: async (movieId) => {
     const allShowtimes = await showtimeService.list({
       movieId,
@@ -391,9 +416,8 @@ export const showtimeService = {
     ].sort();
   },
 
-  /**
-   * CREATE SHOWTIME
-   */
+  // CREATE SHOWTIME
+
   create: async (data) => {
     const errors = validate(data);
 
@@ -427,9 +451,9 @@ export const showtimeService = {
         );
       }
 
-      const movies = await getMovieList();
+      // Fetch enriched data using backend JOIN
+      return showtimeService.get(createdShowtime.id);
 
-      return mapShowtime(createdShowtime, movies);
     } catch (error) {
       if (error.status === 409) {
         throw Object.assign(
@@ -446,9 +470,8 @@ export const showtimeService = {
     }
   },
 
-  /**
-   * UPDATE SHOWTIME
-   */
+  // UPDATE SHOWTIME
+
   update: async (id, data) => {
     const existingShowtime = await showtimeService.get(id);
 
@@ -489,9 +512,9 @@ export const showtimeService = {
         );
       }
 
-      const movies = await getMovieList();
+      // Fetch enriched data using backend JOIN
+      return showtimeService.get(id);
 
-      return mapShowtime(updatedShowtime, movies);
     } catch (error) {
       if (error.status === 409) {
         throw Object.assign(
@@ -508,9 +531,8 @@ export const showtimeService = {
     }
   },
 
-  /**
-   * DELETE SHOWTIME
-   */
+  // DELETE SHOWTIME
+
   remove: async (id) => {
     const response = await api.delete(
       `${API_ENDPOINT}/delete/${id}`
@@ -522,12 +544,8 @@ export const showtimeService = {
     };
   },
 
-  /**
-   * DELETE ALL SHOWTIMES FOR A MOVIE
-   *
-   * Use carefully. The backend currently has no dedicated
-   * remove-by-movie endpoint, so this calls DELETE per showtime.
-   */
+  // DELETE ALL SHOWTIMES FOR A MOVIE
+
   removeByMovie: async (movieId) => {
     const allShowtimes = await showtimeService.list({
       movieId,

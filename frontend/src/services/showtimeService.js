@@ -1,108 +1,545 @@
-import { db } from './db.js';
-import { simulate, ApiError } from './api.js';
-import { AUDITORIUMS, CINEMAS } from '../data/cinemas.js';
-import { availability } from './availability.js';
-import { readSettings } from './settingsService.js';
-import { toMinutes, todayKey, uid } from '../utils/format.js';
+import { api, ApiError } from "./api.js";
+import { movieService } from "./movieService.js";
+import { AUDITORIUMS, CINEMAS } from "../data/cinemas.js";
 
-export const CONFLICT_MESSAGE = 'This auditorium already has a scheduled screening during this time.';
+export const CONFLICT_MESSAGE =
+  "This auditorium already has a scheduled screening during this time.";
 
-const endMinutes = (st) => { const s = toMinutes(st.start); const e = toMinutes(st.end); return e <= s ? e + 1440 : e; };
+const API_ENDPOINT = "/showtime";
 
-/** Attach movie/cinema/auditorium/availability so UI never joins data itself. */
-export const hydrate = (st) => {
-  if (!st) return null;
-  const movie = db.movies.all().find((m) => m.id === st.movieId) || null;
-  const auditorium = AUDITORIUMS.find((a) => a.id === st.auditoriumId) || null;
-  const cinema = CINEMAS.find((c) => c.id === st.cinemaId) || null;
-  return { ...st, movie, auditorium, cinema, ...availabilityOf(st) };
+const toNumber = (value) => Number(value);
+
+const getArrayResult = (response, key) => {
+  const result = response?.[key];
+
+  if (Array.isArray(result)) return result;
+
+  return result ? [result] : [];
 };
-const availabilityOf = (st) => { const a = availability(st); return { capacity: a.capacity, seatsLeft: a.left, soldPct: a.pct, soldOut: a.left === 0 }; };
 
-/** Overlap check incl. turnaround buffer. Returns the clashing showtime or null. */
-export function findConflict(candidate, ignoreId = null) {
-  const buffer = readSettings().system.turnaroundMinutes;
-  const s = toMinutes(candidate.start); let e = toMinutes(candidate.end); if (e <= s) e += 1440;
-  return db.showtimes.all().find((o) => {
-    if (o.id === ignoreId || o.auditoriumId !== candidate.auditoriumId || o.date !== candidate.date || o.status === 'cancelled') return false;
-    const os = toMinutes(o.start); const oe = endMinutes(o);
-    return s < oe + buffer && os < e + buffer;
-  }) || null;
-}
+const getOneResult = (response, key) => {
+  const result = response?.[key];
+
+  if (Array.isArray(result)) return result[0] || null;
+
+  return result || null;
+};
+
+const normalizeTime = (time) => {
+  if (!time) return "";
+
+  return String(time).slice(0, 5);
+};
+
+const getShowStatus = (date, start) => {
+  const showDateTime = new Date(`${date}T${start}:00`);
+
+  return showDateTime.getTime() > Date.now()
+    ? "scheduled"
+    : "completed";
+};
 
 const validate = (data) => {
   const errors = {};
-  if (!data.movieId) errors.movieId = 'Select a movie';
-  if (!data.auditoriumId) errors.auditoriumId = 'Select an auditorium';
-  if (!data.date) errors.date = 'Pick a date';
-  if (!data.start) errors.start = 'Enter a start time';
-  if (!data.end) errors.end = 'Enter an end time';
-  if (!(Number(data.price) > 0)) errors.price = 'Enter a ticket price above $0';
-  if (data.start && data.end && data.start === data.end) errors.end = 'End time must differ from start';
+
+  if (!data.movieId) {
+    errors.movieId = "Select a movie";
+  }
+
+  if (!data.auditoriumId) {
+    errors.auditoriumId = "Select an auditorium";
+  }
+
+  if (!data.date) {
+    errors.date = "Pick a date";
+  }
+
+  if (!data.start) {
+    errors.start = "Enter a start time";
+  }
+
+  if (!data.end) {
+    errors.end = "Enter an end time";
+  }
+
+  const standardPrice = Number(
+    data.standardPrice ?? data.price
+  );
+
+  const primePrice = Number(
+    data.primePrice ?? data.price
+  );
+
+  if (!(standardPrice > 0)) {
+    errors.price = "Enter a valid standard ticket price";
+  }
+
+  if (!(primePrice > 0)) {
+    errors.primePrice = "Enter a valid prime ticket price";
+  }
+
+  if (
+    data.start &&
+    data.end &&
+    data.end <= data.start
+  ) {
+    errors.end = "End time must be greater than start time";
+  }
+
   return errors;
 };
 
+/**
+ * Converts backend showtime fields into the frontend structure.
+ *
+ * Backend:
+ * movie_id, auditorium_id, start_time, end_time
+ *
+ * Frontend:
+ * movieId, auditoriumId, start, end
+ */
+const mapShowtime = (showtime, movies = []) => {
+  const movieId = toNumber(showtime.movie_id);
+  const auditoriumId = toNumber(showtime.auditorium_id);
+
+  const movie =
+    movies.find((item) => toNumber(item.id) === movieId) || null;
+
+  const auditorium =
+    AUDITORIUMS.find(
+      (item) => toNumber(item.id) === auditoriumId
+    ) || null;
+
+  const cinema =
+    CINEMAS.find(
+      (item) =>
+        toNumber(item.id) === toNumber(auditorium?.cinemaId)
+    ) || null;
+
+  const start = normalizeTime(showtime.start_time);
+  const end = normalizeTime(showtime.end_time);
+
+  return {
+    id: toNumber(showtime.id),
+
+    movieId,
+    auditoriumId,
+    cinemaId: auditorium?.cinemaId ?? null,
+
+    movie,
+
+    auditorium,
+    cinema,
+
+    format: showtime.format,
+
+    date: showtime.date,
+    start,
+    end,
+
+    standardPrice: Number(showtime.standard_price),
+    primePrice: Number(showtime.prime_price),
+
+    // Compatibility with existing UI components
+    price: Number(showtime.standard_price),
+
+    status: getShowStatus(showtime.date, start),
+
+    createdAt: showtime.created_at,
+    updatedAt: showtime.updated_at,
+
+    // Seat availability will be connected separately.
+    capacity: null,
+    seatsLeft: null,
+    soldPct: null,
+    soldOut: false,
+  };
+};
+
+const getMovieList = async () => {
+  return movieService.list({
+    scope: "admin",
+    sort: "title",
+  });
+};
+
+const getRawShowtimes = async () => {
+  const response = await api.get(`${API_ENDPOINT}/get-show`);
+
+  return getArrayResult(response, "allShowtimes");
+};
+
+const getRawShowtime = async (id) => {
+  const response = await api.get(
+    `${API_ENDPOINT}/single-show/${id}`
+  );
+
+  const showtime = getOneResult(response, "showtime");
+
+  if (!showtime) {
+    throw new ApiError(
+      "This showtime could not be found.",
+      "NOT_FOUND",
+      404
+    );
+  }
+
+  return showtime;
+};
+
+const toBackendPayload = (data) => {
+  const standardPrice = Number(
+    data.standardPrice ?? data.price
+  );
+
+  const primePrice = Number(
+    data.primePrice ?? data.price
+  );
+
+  return {
+    movie_id: toNumber(data.movieId),
+    auditorium_id: toNumber(data.auditoriumId),
+
+    format: data.format,
+
+    date: data.date,
+    start_time: data.start,
+    end_time: data.end,
+
+    standard_price: standardPrice,
+    prime_price: primePrice,
+  };
+};
+
+/**
+ * Fetches all showtimes and attaches movie/cinema/auditorium data.
+ */
+export const hydrate = async (showtime) => {
+  if (!showtime) return null;
+
+  const [movies] = await Promise.all([
+    getMovieList(),
+  ]);
+
+  return mapShowtime(showtime, movies);
+};
+
+/**
+ * Backend handles actual auditorium conflict validation.
+ * This helper checks conflicts against currently fetched showtimes.
+ */
+export const findConflict = async (
+  candidate,
+  ignoreId = null
+) => {
+  const allShowtimes = await showtimeService.list({
+    date: candidate.date,
+    includePast: true,
+  });
+
+  const start = candidate.start;
+  const end = candidate.end;
+
+  return (
+    allShowtimes.find((showtime) => {
+      if (showtime.id === ignoreId) return false;
+
+      if (
+        showtime.auditoriumId !==
+        toNumber(candidate.auditoriumId)
+      ) {
+        return false;
+      }
+
+      if (showtime.date !== candidate.date) return false;
+
+      return (
+        start < showtime.end &&
+        end > showtime.start
+      );
+    }) || null
+  );
+};
+
 export const showtimeService = {
-  list: ({ movieId, cinemaId, date, search = '', format, includePast = true } = {}) => simulate(() => {
-    const q = search.trim().toLowerCase();
-    return db.showtimes.all().map(hydrate).filter((s) => s.movie
-      && (!movieId || s.movieId === movieId) && (!cinemaId || s.cinemaId === cinemaId) && (!date || s.date === date)
-      && (!format || s.format === format) && (includePast || s.date >= todayKey())
-      && (!q || `${s.movie.title} ${s.auditorium?.name} ${s.cinema?.short}`.toLowerCase().includes(q)))
-      .sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start));
-  }, 200),
+  /**
+   * GET ALL SHOWTIMES
+   */
+  list: async ({
+    movieId,
+    cinemaId,
+    date,
+    search = "",
+    format,
+    includePast = true,
+  } = {}) => {
+    const [rawShowtimes, movies] = await Promise.all([
+      getRawShowtimes(),
+      getMovieList(),
+    ]);
 
-  get: (id) => simulate(() => {
-    const st = db.showtimes.all().find((s) => s.id === id);
-    if (!st) throw new ApiError('This showtime could not be found.', 'NOT_FOUND');
-    return hydrate(st);
-  }, 150),
+    const query = search.trim().toLowerCase();
 
-  /** Sync helper for components that already have loaded data (e.g. next-show badges). */
-  nextByMovie: () => simulate(() => {
-    const now = Date.now(); const map = {};
-    db.showtimes.all().map(hydrate).filter((s) => s.movie && new Date(`${s.date}T${s.start}:00`).getTime() > now && !s.soldOut && s.status !== 'cancelled')
-      .sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start)).forEach((s) => { map[s.movieId] ||= s; });
+    return rawShowtimes
+      .map((item) => mapShowtime(item, movies))
+      .filter((showtime) => {
+        if (!showtime.movie) return false;
+
+        if (
+          movieId &&
+          showtime.movieId !== toNumber(movieId)
+        ) {
+          return false;
+        }
+
+        if (
+          cinemaId &&
+          showtime.cinemaId !== toNumber(cinemaId)
+        ) {
+          return false;
+        }
+
+        if (date && showtime.date !== date) {
+          return false;
+        }
+
+        if (format && showtime.format !== format) {
+          return false;
+        }
+
+        if (!includePast) {
+          const showDateTime = new Date(
+            `${showtime.date}T${showtime.start}:00`
+          );
+
+          if (showDateTime.getTime() <= Date.now()) {
+            return false;
+          }
+        }
+
+        if (query) {
+          const searchableText = [
+            showtime.movie.title,
+            showtime.auditorium?.name,
+            showtime.cinema?.short,
+            showtime.format,
+          ]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase();
+
+          if (!searchableText.includes(query)) {
+            return false;
+          }
+        }
+
+        return true;
+      })
+      .sort((a, b) =>
+        `${a.date}${a.start}`.localeCompare(
+          `${b.date}${b.start}`
+        )
+      );
+  },
+
+  /**
+   * GET SINGLE SHOWTIME
+   */
+  get: async (id) => {
+    const [rawShowtime, movies] = await Promise.all([
+      getRawShowtime(id),
+      getMovieList(),
+    ]);
+
+    return mapShowtime(rawShowtime, movies);
+  },
+
+  /**
+   * GET NEXT UPCOMING SHOW FOR EACH MOVIE
+   */
+  nextByMovie: async () => {
+    const allShowtimes = await showtimeService.list({
+      includePast: false,
+    });
+
+    const map = {};
+
+    allShowtimes.forEach((showtime) => {
+      const movieId = showtime.movieId;
+
+      if (!map[movieId]) {
+        map[movieId] = showtime;
+      }
+    });
+
     return map;
-  }, 150),
+  },
 
-  datesFor: (movieId) => simulate(() => [...new Set(db.showtimes.all().filter((s) => s.movieId === movieId && s.date >= todayKey()).map((s) => s.date))].sort(), 80),
+  /**
+   * GET UPCOMING DATES FOR A MOVIE
+   */
+  datesFor: async (movieId) => {
+    const allShowtimes = await showtimeService.list({
+      movieId,
+      includePast: false,
+    });
 
-  create: (data) => simulate(() => {
+    return [
+      ...new Set(
+        allShowtimes.map((showtime) => showtime.date)
+      ),
+    ].sort();
+  },
+
+  /**
+   * CREATE SHOWTIME
+   */
+  create: async (data) => {
     const errors = validate(data);
-    if (Object.keys(errors).length) throw Object.assign(new ApiError('Please fix the highlighted fields.', 'VALIDATION'), { errors });
-    const aud = AUDITORIUMS.find((a) => a.id === data.auditoriumId);
-    const next = { id: uid('st'), movieId: data.movieId, cinemaId: aud.cinemaId, auditoriumId: aud.id, date: data.date, start: data.start, end: data.end, price: Number(data.price), format: data.format || aud.format, tag: data.tag || 'Standard', status: 'scheduled' };
-    if (findConflict(next)) throw Object.assign(new ApiError(CONFLICT_MESSAGE, 'CONFLICT'), { errors: { start: CONFLICT_MESSAGE } });
-    db.showtimes.save([...db.showtimes.all(), next]);
-    return hydrate(next);
-  }),
 
-  update: (id, data) => simulate(() => {
-    const all = db.showtimes.all(); const cur = all.find((s) => s.id === id);
-    if (!cur) throw new ApiError('This showtime no longer exists.', 'NOT_FOUND');
-    const errors = validate({ ...cur, ...data });
-    if (Object.keys(errors).length) throw Object.assign(new ApiError('Please fix the highlighted fields.', 'VALIDATION'), { errors });
-    const aud = AUDITORIUMS.find((a) => a.id === (data.auditoriumId || cur.auditoriumId));
-    const patch = Object.fromEntries(['movieId', 'date', 'start', 'end', 'format', 'tag'].filter((k) => data[k] !== undefined).map((k) => [k, data[k]]));
-    const next = { ...cur, ...patch, price: Number(data.price ?? cur.price), cinemaId: aud.cinemaId, auditoriumId: aud.id };
-    if (findConflict(next, id)) throw Object.assign(new ApiError(CONFLICT_MESSAGE, 'CONFLICT'), { errors: { start: CONFLICT_MESSAGE } });
-    db.showtimes.save(all.map((s) => (s.id === id ? next : s)));
-    return hydrate(next);
-  }),
-
-  remove: (id) => simulate(() => {
-    const all = db.showtimes.all();
-    const active = db.bookings.all().filter((b) => b.showtimeId === id && ['confirmed', 'pending'].includes(b.status));
-    if (!all.some((s) => s.id === id)) throw new ApiError('This showtime no longer exists.', 'NOT_FOUND');
-    db.showtimes.save(all.filter((s) => s.id !== id));
-    // cascade: cancel + refund bookings of a removed show so no customer is left holding a dead ticket
-    if (active.length) {
-      const at = new Date().toISOString();
-      db.bookings.save(db.bookings.all().map((b) => (active.some((a) => a.id === b.id) ? { ...b, status: 'refunded', refund: { state: 'processed', amount: b.total, at, reason: 'Showtime removed' } } : b)));
+    if (Object.keys(errors).length) {
+      throw Object.assign(
+        new ApiError(
+          "Please fix the highlighted fields.",
+          "VALIDATION"
+        ),
+        { errors }
+      );
     }
-    return { id, refunded: active.length };
-  }),
 
-  removeByMovie: (movieId) => { db.showtimes.save(db.showtimes.all().filter((s) => s.movieId !== movieId)); },
+    try {
+      const payload = toBackendPayload(data);
+
+      const response = await api.post(
+        `${API_ENDPOINT}/create-showtime`,
+        payload
+      );
+
+      const createdShowtime = getOneResult(
+        response,
+        "insertingShowtime"
+      );
+
+      if (!createdShowtime) {
+        throw new ApiError(
+          "Showtime was not returned by server.",
+          "INVALID_RESPONSE"
+        );
+      }
+
+      const movies = await getMovieList();
+
+      return mapShowtime(createdShowtime, movies);
+    } catch (error) {
+      if (error.status === 409) {
+        throw Object.assign(
+          new ApiError(CONFLICT_MESSAGE, "CONFLICT", 409),
+          {
+            errors: {
+              start: CONFLICT_MESSAGE,
+            },
+          }
+        );
+      }
+
+      throw error;
+    }
+  },
+
+  /**
+   * UPDATE SHOWTIME
+   */
+  update: async (id, data) => {
+    const existingShowtime = await showtimeService.get(id);
+
+    const updatedData = {
+      ...existingShowtime,
+      ...data,
+    };
+
+    const errors = validate(updatedData);
+
+    if (Object.keys(errors).length) {
+      throw Object.assign(
+        new ApiError(
+          "Please fix the highlighted fields.",
+          "VALIDATION"
+        ),
+        { errors }
+      );
+    }
+
+    try {
+      const payload = toBackendPayload(updatedData);
+
+      const response = await api.put(
+        `${API_ENDPOINT}/update-show/${id}`,
+        payload
+      );
+
+      const updatedShowtime = getOneResult(
+        response,
+        "updatedShowtime"
+      );
+
+      if (!updatedShowtime) {
+        throw new ApiError(
+          "Updated showtime was not returned by server.",
+          "INVALID_RESPONSE"
+        );
+      }
+
+      const movies = await getMovieList();
+
+      return mapShowtime(updatedShowtime, movies);
+    } catch (error) {
+      if (error.status === 409) {
+        throw Object.assign(
+          new ApiError(CONFLICT_MESSAGE, "CONFLICT", 409),
+          {
+            errors: {
+              start: CONFLICT_MESSAGE,
+            },
+          }
+        );
+      }
+
+      throw error;
+    }
+  },
+
+  /**
+   * DELETE SHOWTIME
+   */
+  remove: async (id) => {
+    const response = await api.delete(
+      `${API_ENDPOINT}/delete/${id}`
+    );
+
+    return {
+      id: toNumber(id),
+      response,
+    };
+  },
+
+  /**
+   * DELETE ALL SHOWTIMES FOR A MOVIE
+   *
+   * Use carefully. The backend currently has no dedicated
+   * remove-by-movie endpoint, so this calls DELETE per showtime.
+   */
+  removeByMovie: async (movieId) => {
+    const allShowtimes = await showtimeService.list({
+      movieId,
+      includePast: true,
+    });
+
+    const results = await Promise.all(
+      allShowtimes.map((showtime) =>
+        showtimeService.remove(showtime.id)
+      )
+    );
+
+    return results;
+  },
 };

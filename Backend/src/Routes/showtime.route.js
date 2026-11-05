@@ -1,10 +1,28 @@
 import express from "express";
-import { createShowtime, deleteShowtime, getAllShowtimes, getSingleShowtime, updateShowtime } from "../controllers/showtime.controller.js";
+
+import {
+  createShowtime,
+  deleteShowtime,
+  getAllShowtimes,
+  getSingleShowtime,
+  updateShowtime,
+} from "../controllers/showtime.controller.js";
+
 import { authMiddleware } from "../Middlewares/auth.middleware.js";
 import { roleMiddleware } from "../Middlewares/role.middleware.js";
 
+const router = express.Router();
 
-const router = express.Router()
+router.post(
+  "/create-showtime",
+  authMiddleware,
+  roleMiddleware("admin"),
+  createShowtime
+);
+
+router.get("/get-show", getAllShowtimes);
+
+router.get("/single-show/:id", getSingleShowtime);
 
 router.put(
   "/update-show/:id",
@@ -12,12 +30,12 @@ router.put(
   roleMiddleware("admin"),
   updateShowtime
 );
-router.post("/create-showtime",authMiddleware,roleMiddleware("admin"),createShowtime);
-router.get("/get-show",getAllShowtimes)
-router.get("/single-show/:id",getSingleShowtime)
-router.delete("/delete/:id",authMiddleware,roleMiddleware("admin"),deleteShowtime)
 
-
-
+router.delete(
+  "/delete/:id",
+  authMiddleware,
+  roleMiddleware("admin"),
+  deleteShowtime
+);
 
 export default router;

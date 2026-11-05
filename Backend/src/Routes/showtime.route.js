@@ -6,11 +6,15 @@ import { roleMiddleware } from "../Middlewares/role.middleware.js";
 
 const router = express.Router()
 
-
+router.put(
+  "/update-show/:id",
+  authMiddleware,
+  roleMiddleware("admin"),
+  updateShowtime
+);
 router.post("/create-showtime",authMiddleware,roleMiddleware("admin"),createShowtime);
 router.get("/get-show",getAllShowtimes)
 router.get("/single-show/:id",getSingleShowtime)
-router.put("/update-show",authMiddleware,roleMiddleware("admin"),updateShowtime)
 router.delete("/delete/:id",authMiddleware,roleMiddleware("admin"),deleteShowtime)
 
 

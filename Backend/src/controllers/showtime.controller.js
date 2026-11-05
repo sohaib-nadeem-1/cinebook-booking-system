@@ -28,17 +28,16 @@ export const createShowtime = async (req, res) => {
       });
     }
 
-    if (standard_price <= 0) {
-      return res.status(400).json({
-        message: "Standard price must be greater than 0",
-      });
-    }
-
-    if (prime_price <= 0) {
-      return res.status(400).json({
-        message: "Prime price must be greater than 0",
-      });
-    }
+if (
+  standard_price === undefined ||
+  prime_price === undefined ||
+  Number(standard_price) <= 0 ||
+  Number(prime_price) <= 0
+) {
+  return res.status(400).json({
+    message: "Valid ticket prices are required",
+  });
+}
 
     if (end_time <= start_time) {
       return res.status(400).json({

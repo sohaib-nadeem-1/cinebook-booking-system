@@ -2,35 +2,23 @@ import { api, ApiError } from "./api.js";
 
 const getBookingDateTime = (booking) => {
   const date = booking.date;
-  const startTime =
-    booking.start_time ||
-    booking.start;
+  const startTime = booking.start_time || booking.start;
 
-  if (!date || !startTime) {
-    return null;
-  }
+  if (!date || !startTime) return null;
 
   return new Date(`${date}T${startTime}`);
 };
 
 export const bookingPhase = (booking) => {
-  if (
-    ["cancelled", "refunded"].includes(
-      booking.status
-    )
-  ) {
+  if (["cancelled", "refunded"].includes(booking.status)) {
     return "cancelled";
   }
 
   const start = getBookingDateTime(booking);
 
-  if (!start) {
-    return "upcoming";
-  }
+  if (!start) return "upcoming";
 
-  return start.getTime() +
-    3 * 3600 * 1000 <
-    Date.now()
+  return start.getTime() + 3 * 3600 * 1000 < Date.now()
     ? "completed"
     : "upcoming";
 };
@@ -40,36 +28,24 @@ export const hoursUntil = (booking) => {
 
   if (!start) return 0;
 
-  return (
-    start.getTime() - Date.now()
-  ) / 3600000;
+  return (start.getTime() - Date.now()) / 3600000;
 };
 
 export const canCancel = (booking) => {
   return (
-    ["confirmed", "pending"].includes(
-      booking.status
-    ) &&
+    ["confirmed", "pending"].includes(booking.status) &&
     hoursUntil(booking) > 0
   );
 };
 
-export const canRefund = () => {
-  // Refund logic abhi backend mein implement nahi hai.
-  return false;
-};
-
+export const canRefund = () => false;
 
 // =====================================================
 // BOOKING SERVICE
 // =====================================================
 
 export const bookingService = {
-
-  // ===================================================
   // GET MY BOOKINGS
-  // ===================================================
-
   list: async ({
     search = "",
     status,
@@ -77,54 +53,39 @@ export const bookingService = {
     movieId,
     phase,
   } = {}) => {
-
-    const response = await api.get(
-      "/bookings/my-bookings"
-    );
+    const response = await api.get("/bookings/my-bookings");
 
     let bookings = response.bookings || [];
 
-    // -----------------------------
-    // Frontend-side filtering
-    // -----------------------------
-
-    const query = search
-      .trim()
-      .toLowerCase();
+    const query = search.trim().toLowerCase();
 
     if (query) {
       bookings = bookings.filter((booking) =>
-        String(booking.id)
-          .toLowerCase()
-          .includes(query)
+        String(booking.id).toLowerCase().includes(query)
       );
     }
 
     if (status) {
       bookings = bookings.filter(
-        (booking) =>
-          booking.status === status
+        (booking) => booking.status === status
       );
     }
 
     if (date) {
       bookings = bookings.filter(
-        (booking) =>
-          booking.date === date
+        (booking) => booking.date === date
       );
     }
 
     if (movieId) {
       bookings = bookings.filter(
-        (booking) =>
-          booking.movie_id === movieId
+        (booking) => booking.movie_id === movieId
       );
     }
 
     if (phase) {
       bookings = bookings.filter(
-        (booking) =>
-          bookingPhase(booking) === phase
+        (booking) => bookingPhase(booking) === phase
       );
     }
 
@@ -135,144 +96,93 @@ export const bookingService = {
     );
   },
 
-
-  // ===================================================
   // GET SINGLE BOOKING
-  // ===================================================
-
   get: async (id) => {
-
     if (!id) {
-      throw new ApiError(
-        "Booking ID is required.",
-        "INVALID_ID"
-      );
+      throw new ApiError("Booking ID is required.", "INVALID_ID");
     }
 
-    const response = await api.get(
-      `/bookings/${id}`
-    );
+    const response = await api.get(`/bookings/${id}`);
 
     if (!response.booking) {
-      throw new ApiError(
-        "Booking not found.",
-        "NOT_FOUND",
-        404
-      );
+      throw new ApiError("Booking not found.", "NOT_FOUND", 404);
     }
 
     return {
       ...response.booking,
-
-      seats:
-        response.seats || [],
+      seats: response.seats || [],
     };
   },
 
-
-  // ===================================================
   // CREATE BOOKING
-  // ===================================================
-
-  create: async ({
-    showtimeId,
-    seats,
-  }) => {
-
+  create: async ({ showtimeId, seats }) => {
     if (!showtimeId) {
-      throw new ApiError(
-        "Showtime is required.",
-        "VALIDATION"
-      );
+      throw new ApiError("Showtime is required.", "VALIDATION");
     }
 
-    if (
-      !Array.isArray(seats) ||
-      seats.length === 0
-    ) {
-      throw new ApiError(
-        "Select at least one seat.",
-        "NO_SEATS"
-      );
+    if (!Array.isArray(seats) || seats.length === 0) {
+      throw new ApiError("Select at least one seat.", "NO_SEATS");
     }
-
-    /*
-      IMPORTANT:
-
-      Backend expects:
-
-      {
-        showtimeId,
-        seatsID: [1, 2, 3]
-      }
-
-      `id` must be the REAL database seats.id.
-
-      Frontend currently has some seat IDs like A1,
-      A2 etc. Those are display IDs and cannot be
-      sent directly to the backend.
-
-      seatService integration will provide the
-      database seat IDs.
-    */
 
     const seatIds = seats.map((seat) => {
+      const id = Number(
+        seat.dbId ?? seat.seatId ?? seat.id
+      );
 
-      const id =
-        seat.dbId ??
-        seat.seatId ??
-        seat.id;
-
-      const numericId = Number(id);
-
-      if (!Number.isInteger(numericId)) {
+      if (!Number.isInteger(id) || id <= 0) {
         throw new ApiError(
-          "Invalid seat ID. Seat data must contain the database seat ID.",
+          "Invalid database seat ID.",
           "INVALID_SEAT_ID"
         );
       }
 
-      return numericId;
+      return id;
     });
 
-    const response = await api.post(
-      "/bookings",
-      {
-        showtimeId: Number(showtimeId),
-        seatsID: seatIds,
-      }
-    );
-
-    return response;
-  },
-
-
-  // ===================================================
-  // CANCEL BOOKING
-  // ===================================================
-
-  cancel: async (
-    id,
-    { by = "customer" } = {}
-  ) => {
-
-    if (!id) {
+    if (new Set(seatIds).size !== seatIds.length) {
       throw new ApiError(
-        "Booking ID is required.",
-        "INVALID_ID"
+        "Duplicate seats are not allowed.",
+        "DUPLICATE_SEATS"
       );
     }
 
-    /*
-      Current backend endpoint:
+    try {
+      const response = await api.post("/bookings/", {
+        showtimeId: Number(showtimeId),
+        seatsID: seatIds,
+      });
 
-      PATCH /api/bookings/:id/cancel
+      if (!response.booking?.id) {
+        throw new ApiError(
+          "Invalid booking response from server.",
+          "INVALID_RESPONSE"
+        );
+      }
 
-      It changes status to "cancelled".
+      // Normalize backend response for CheckoutPage
+      return {
+        ...response.booking,
+        seats: response.seats || [],
+        totalAmount: response.totalAmount,
+      };
+    } catch (error) {
+      if (error.status === 409) {
+        throw new ApiError(
+          error.message,
+          "SEAT_TAKEN",
+          409
+        );
+      }
 
-      Refund processing is NOT implemented
-      in the current backend.
-    */
+      throw error;
+    }
+  },
+
+  // CANCEL BOOKING
+  cancel: async (id) => {
+    if (!id) {
+      throw new ApiError("Booking ID is required.", "INVALID_ID");
+    }
 
     const response = await api.patch(
       `/bookings/${id}/cancel`
@@ -288,70 +198,40 @@ export const bookingService = {
     return response.booking;
   },
 
-
-  // ===================================================
   // BOOKING STATS
-  // ===================================================
-
   stats: async () => {
+    const response = await api.get("/bookings/my-bookings");
 
-    const response = await api.get(
-      "/bookings/my-bookings"
+    const bookings = response.bookings || [];
+
+    const activeBookings = bookings.filter(
+      (booking) =>
+        !["cancelled", "refunded"].includes(booking.status)
     );
-
-    const bookings =
-      response.bookings || [];
-
-    const activeBookings =
-      bookings.filter(
-        (booking) =>
-          ![
-            "cancelled",
-            "refunded",
-          ].includes(booking.status)
-      );
-
-    /*
-      Backend booking_seats are returned only
-      by single-booking endpoint.
-
-      So for now tickets count is calculated
-      by fetching individual bookings.
-    */
 
     let tickets = 0;
 
     for (const booking of activeBookings) {
-
       try {
-        const detail = await api.get(
-          `/bookings/${booking.id}`
+        const detail = await api.get(`/bookings/${booking.id}`);
+        tickets += detail.seats?.length || 0;
+      } catch (error) {
+        console.error(
+          `Unable to fetch booking ${booking.id}:`,
+          error
         );
-
-        tickets +=
-          detail.seats?.length || 0;
-
-      } catch {
-        // Ignore one failed booking detail
       }
     }
 
-    const spent =
-      activeBookings.reduce(
-        (total, booking) =>
-          total +
-          Number(
-            booking.total_amount || 0
-          ),
-        0
-      );
+    const spent = activeBookings.reduce(
+      (total, booking) =>
+        total + Number(booking.total_amount || 0),
+      0
+    );
 
-    const upcoming =
-      activeBookings.filter(
-        (booking) =>
-          bookingPhase(booking) ===
-          "upcoming"
-      ).length;
+    const upcoming = activeBookings.filter(
+      (booking) => bookingPhase(booking) === "upcoming"
+    ).length;
 
     return {
       total: bookings.length,

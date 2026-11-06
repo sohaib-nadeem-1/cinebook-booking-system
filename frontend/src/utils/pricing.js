@@ -18,12 +18,11 @@ const round2 = (amount) =>
   Math.round((amount + Number.EPSILON) * 100) / 100;
 
 /**
- * Shared pricing calculation for seat selection and checkout.
+ * Shared pricing calculation.
  *
  * seats: [{ id, tier, category, price }]
- * primePrice: showtime base price (fallback)
- * settings: { taxRate (%), serviceFee (per ticket) }
- * options: { combo: boolean }
+ * primePrice: Showtime prime price
+ * settings: { taxRate, serviceFee }
  */
 export function calcPricing(
   seats,
@@ -35,34 +34,36 @@ export function calcPricing(
     throw new Error("Seats must be an array.");
   }
 
-  const fallbackPrices = tierPrices(primePrice);
+  const prices = tierPrices(Number(primePrice));
   const lines = {};
 
   seats.forEach((seat) => {
-    const tier = seat.tier || seat.category || seat.type;
+    const tier =
+      seat.tier ||
+      (seat.category === "vip lounge" ? "vip" : seat.category);
 
-    const seatPrice =
+    const unitPrice =
       seat.price !== undefined && seat.price !== null
         ? Number(seat.price)
-        : Number(fallbackPrices[tier]);
+        : Number(prices[tier]);
 
     if (
       !tier ||
-      !Number.isFinite(seatPrice) ||
-      seatPrice < 0
+      !Number.isFinite(unitPrice) ||
+      unitPrice < 0
     ) {
       throw new Error("Invalid seat pricing data.");
     }
 
     const line = (lines[tier] ||= {
       tier,
-      unit: seatPrice,
+      unit: unitPrice,
       qty: 0,
       total: 0,
     });
 
     line.qty += 1;
-    line.total = round2(line.total + seatPrice);
+    line.total = round2(line.total + unitPrice);
   });
 
   const quantity = seats.length;
@@ -88,9 +89,7 @@ export function calcPricing(
     settings.taxRate ?? DEFAULT_PRICING.taxRate;
 
   const taxable = ticketSubtotal + serviceFee + concessions;
-
   const tax = round2(taxable * (taxRate / 100));
-
   const total = round2(taxable + tax);
 
   return {

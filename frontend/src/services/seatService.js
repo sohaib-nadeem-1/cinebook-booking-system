@@ -1,3 +1,4 @@
+
 import { api, ApiError } from "./api.js";
 import { showtimeService } from "./showtimeService.js";
 
@@ -21,20 +22,18 @@ const fetchSeatAvailability = async (showtimeId) => {
   return response.seats;
 };
 
-const mapSeat = (seat, showtime) => {
-  const category = seat.seat_category;
+const mapSeat = (seat, showtime, prices) => {
+  const category = seat.seat_category || seat.category;
 
-  const price =
-    category === "standard"
-      ? showtime.standardPrice
-      : category === "prime"
-        ? showtime.primePrice
-        : 0;
+  const tier =
+    category === "vip lounge" ? "vip" : category;
+
+  const price = Number(prices[tier]);
 
   return {
     ...seat,
 
-    // Display ID: A1, A2, B1...
+    // Display ID: E1, E2, A1...
     id: String(seat.id),
 
     // Actual PostgreSQL seat ID
@@ -45,18 +44,14 @@ const mapSeat = (seat, showtime) => {
     number: Number(seat.number),
 
     category,
-    type: category,
+    type: tier,
+    tier,
 
-    // BookingSummary and pricing compatibility
-    tier: category === "vip lounge" ? "vip" : category,
+    price: Number.isFinite(price) ? price : 0,
 
-    price: Number(price),
-
-    // Backend currently supports standard and prime only.
-    status:
-      category === "vip lounge"
-        ? "unavailable"
-        : seat.status,
+    // Keep backend availability status.
+    // VIP seats are selectable when available.
+    status: seat.status,
   };
 };
 
@@ -94,7 +89,7 @@ export const seatService = {
     };
 
     const formattedSeats = rawSeats.map((seat) =>
-      mapSeat(seat, showtime)
+      mapSeat(seat, showtime, prices)
     );
 
     return {
@@ -108,7 +103,7 @@ export const seatService = {
   verify: async (showtimeId, selectedSeatIds) => {
     if (!Array.isArray(selectedSeatIds)) {
       throw new ApiError(
-        "Invalid selected seats.",
+        "Selected seats must be an array.",
         "VALIDATION",
         400
       );

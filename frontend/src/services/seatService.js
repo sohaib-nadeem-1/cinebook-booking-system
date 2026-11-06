@@ -37,7 +37,7 @@ const mapSeat = (seat, showtime) => {
     // Display ID: A1, A2, B1...
     id: String(seat.id),
 
-    // Real database ID for booking API
+    // Actual PostgreSQL seat ID
     dbId: Number(seat.dbId),
     seatId: Number(seat.dbId),
 
@@ -47,9 +47,12 @@ const mapSeat = (seat, showtime) => {
     category,
     type: category,
 
+    // BookingSummary and pricing compatibility
+    tier: category === "vip lounge" ? "vip" : category,
+
     price: Number(price),
 
-    // Backend booking currently supports standard and prime only.
+    // Backend currently supports standard and prime only.
     status:
       category === "vip lounge"
         ? "unavailable"
@@ -86,8 +89,8 @@ export const seatService = {
 
     const prices = {
       ...tierPrices(showtime.price),
-      standard: showtime.standardPrice,
-      prime: showtime.primePrice,
+      standard: Number(showtime.standardPrice),
+      prime: Number(showtime.primePrice),
     };
 
     const formattedSeats = rawSeats.map((seat) =>
@@ -103,6 +106,14 @@ export const seatService = {
   },
 
   verify: async (showtimeId, selectedSeatIds) => {
+    if (!Array.isArray(selectedSeatIds)) {
+      throw new ApiError(
+        "Invalid selected seats.",
+        "VALIDATION",
+        400
+      );
+    }
+
     const rawSeats = await fetchSeatAvailability(showtimeId);
 
     const seatMap = new Map(

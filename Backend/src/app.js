@@ -6,6 +6,8 @@ import authRouter from "./Routes/auth.route.js";
 import movieRouter from "./Routes/movies.routes.js";
 import showTimeRouter from "./Routes/showtime.route.js";
 import bookingRouter from "./Routes/booking.routes.js";
+import seatRouter from "./routes/seat.routes.js";
+
 
 dotenv.config();
 
@@ -23,7 +25,7 @@ app.get("/", (req, res) => {
 app.use("/api", authRouter);
 app.use("/api", movieRouter);
 app.use("/api/bookings", bookingRouter);
-
+app.use("/api/seats", seatRouter);
 // Showtime routes now use the same /api base URL.
 app.use("/api/showtime", showTimeRouter);
 

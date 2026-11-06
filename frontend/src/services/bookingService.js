@@ -1,174 +1,125 @@
 import { api, ApiError } from "./api.js";
 
-const getBookingDateTime = (booking) => {
-  const date = booking.date;
-  const startTime = booking.start_time || booking.start;
+const API_ENDPOINT = "/bookings";
 
-  if (!date || !startTime) return null;
+const getArray = (response, key) => {
+  const result = response?.[key];
 
-  return new Date(`${date}T${startTime}`);
+  return Array.isArray(result)
+    ? result
+    : result
+      ? [result]
+      : [];
+};
+
+const getOne = (response, key) => {
+  const result = response?.[key];
+
+  return Array.isArray(result)
+    ? result[0] || null
+    : result || null;
 };
 
 export const bookingPhase = (booking) => {
-  if (["cancelled", "refunded"].includes(booking.status)) {
-    return "cancelled";
-  }
+  if (booking.status === "cancelled") return "cancelled";
+  if (booking.status === "refunded") return "refunded";
 
-  const start = getBookingDateTime(booking);
-
-  if (!start) return "upcoming";
-
-  return start.getTime() + 3 * 3600 * 1000 < Date.now()
-    ? "completed"
-    : "upcoming";
+  return "upcoming";
 };
 
-export const hoursUntil = (booking) => {
-  const start = getBookingDateTime(booking);
+export const hoursUntil = (date, time) => {
+  if (!date || !time) return null;
 
-  if (!start) return 0;
-
-  return (start.getTime() - Date.now()) / 3600000;
+  const target = new Date(`${date}T${time}`);
+  return (target.getTime() - Date.now()) / 3600000;
 };
 
 export const canCancel = (booking) => {
+  const hours = hoursUntil(
+    booking.date,
+    booking.start_time
+  );
+
   return (
-    ["confirmed", "pending"].includes(booking.status) &&
-    hoursUntil(booking) > 0
+    booking.status === "confirmed" &&
+    hours !== null &&
+    hours > 0
   );
 };
 
-export const canRefund = () => false;
+export const canRefund = (booking) => {
+  const hours = hoursUntil(
+    booking.date,
+    booking.start_time
+  );
 
-// =====================================================
-// BOOKING SERVICE
-// =====================================================
+  return canCancel(booking) && hours >= 2;
+};
 
 export const bookingService = {
-  // GET MY BOOKINGS
-  list: async ({
-    search = "",
-    status,
-    date,
-    movieId,
-    phase,
-  } = {}) => {
-    const response = await api.get("/bookings/my-bookings");
-
-    let bookings = response.bookings || [];
-
-    const query = search.trim().toLowerCase();
-
-    if (query) {
-      bookings = bookings.filter((booking) =>
-        String(booking.id).toLowerCase().includes(query)
-      );
-    }
-
-    if (status) {
-      bookings = bookings.filter(
-        (booking) => booking.status === status
-      );
-    }
-
-    if (date) {
-      bookings = bookings.filter(
-        (booking) => booking.date === date
-      );
-    }
-
-    if (movieId) {
-      bookings = bookings.filter(
-        (booking) => booking.movie_id === movieId
-      );
-    }
-
-    if (phase) {
-      bookings = bookings.filter(
-        (booking) => bookingPhase(booking) === phase
-      );
-    }
-
-    return bookings.sort(
-      (a, b) =>
-        new Date(b.created_at || 0) -
-        new Date(a.created_at || 0)
+  list: async () => {
+    const response = await api.get(
+      `${API_ENDPOINT}/my-bookings`
     );
+
+    return getArray(response, "bookings");
   },
 
-  // GET SINGLE BOOKING
   get: async (id) => {
-    if (!id) {
-      throw new ApiError("Booking ID is required.", "INVALID_ID");
-    }
+    const response = await api.get(
+      `${API_ENDPOINT}/${id}`
+    );
 
-    const response = await api.get(`/bookings/${id}`);
-
-    if (!response.booking) {
-      throw new ApiError("Booking not found.", "NOT_FOUND", 404);
-    }
-
-    return {
-      ...response.booking,
-      seats: response.seats || [],
-    };
+    return getOne(response, "booking");
   },
 
-  // CREATE BOOKING
   create: async ({ showtimeId, seats }) => {
-    if (!showtimeId) {
-      throw new ApiError("Showtime is required.", "VALIDATION");
-    }
+    const seatsID = seats.map((seat) =>
+      Number(seat.dbId ?? seat.seatId ?? seat.id)
+    );
 
-    if (!Array.isArray(seats) || seats.length === 0) {
-      throw new ApiError("Select at least one seat.", "NO_SEATS");
-    }
-
-    const seatIds = seats.map((seat) => {
-      const id = Number(
-        seat.dbId ?? seat.seatId ?? seat.id
-      );
-
-      if (!Number.isInteger(id) || id <= 0) {
-        throw new ApiError(
-          "Invalid database seat ID.",
-          "INVALID_SEAT_ID"
-        );
-      }
-
-      return id;
-    });
-
-    if (new Set(seatIds).size !== seatIds.length) {
+    if (
+      !Number.isInteger(Number(showtimeId)) ||
+      seatsID.length === 0 ||
+      seatsID.some(
+        (id) => !Number.isInteger(id) || id <= 0
+      )
+    ) {
       throw new ApiError(
-        "Duplicate seats are not allowed.",
-        "DUPLICATE_SEATS"
+        "Invalid showtime or seat selection.",
+        "VALIDATION",
+        400
       );
     }
 
     try {
-      const response = await api.post("/bookings/", {
-        showtimeId: Number(showtimeId),
-        seatsID: seatIds,
-      });
+      const response = await api.post(
+        `${API_ENDPOINT}/`,
+        {
+          showtimeId: Number(showtimeId),
+          seatsID,
+        }
+      );
 
-      if (!response.booking?.id) {
+      const createdBooking = response?.booking;
+
+      if (!createdBooking?.id) {
         throw new ApiError(
           "Invalid booking response from server.",
           "INVALID_RESPONSE"
         );
       }
 
-      // Normalize backend response for CheckoutPage
       return {
-        ...response.booking,
+        ...createdBooking,
+        id: Number(createdBooking.id),
         seats: response.seats || [],
         totalAmount: response.totalAmount,
       };
     } catch (error) {
       if (error.status === 409) {
         throw new ApiError(
-          error.message,
+          error.message || "One or more seats are already booked.",
           "SEAT_TAKEN",
           409
         );
@@ -178,66 +129,36 @@ export const bookingService = {
     }
   },
 
-  // CANCEL BOOKING
   cancel: async (id) => {
-    if (!id) {
-      throw new ApiError("Booking ID is required.", "INVALID_ID");
-    }
-
     const response = await api.patch(
-      `/bookings/${id}/cancel`
+      `${API_ENDPOINT}/${id}/cancel`
     );
 
-    if (!response.booking) {
-      throw new ApiError(
-        "Unable to cancel booking.",
-        "CANCEL_FAILED"
-      );
-    }
-
-    return response.booking;
+    return getOne(response, "booking");
   },
 
-  // BOOKING STATS
   stats: async () => {
-    const response = await api.get("/bookings/my-bookings");
+    const bookings = await bookingService.list();
 
-    const bookings = response.bookings || [];
+    const total = bookings.length;
 
-    const activeBookings = bookings.filter(
-      (booking) =>
-        !["cancelled", "refunded"].includes(booking.status)
-    );
+    const confirmed = bookings.filter(
+      (item) => item.status === "confirmed"
+    ).length;
 
-    let tickets = 0;
+    const cancelled = bookings.filter(
+      (item) => item.status === "cancelled"
+    ).length;
 
-    for (const booking of activeBookings) {
-      try {
-        const detail = await api.get(`/bookings/${booking.id}`);
-        tickets += detail.seats?.length || 0;
-      } catch (error) {
-        console.error(
-          `Unable to fetch booking ${booking.id}:`,
-          error
-        );
-      }
-    }
-
-    const spent = activeBookings.reduce(
-      (total, booking) =>
-        total + Number(booking.total_amount || 0),
-      0
-    );
-
-    const upcoming = activeBookings.filter(
-      (booking) => bookingPhase(booking) === "upcoming"
+    const refunded = bookings.filter(
+      (item) => item.status === "refunded"
     ).length;
 
     return {
-      total: bookings.length,
-      tickets,
-      spent,
-      upcoming,
+      total,
+      confirmed,
+      cancelled,
+      refunded,
     };
   },
 };

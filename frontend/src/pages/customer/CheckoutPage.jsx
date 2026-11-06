@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+
+import {
+  Link,
+  useNavigate,
+} from "react-router-dom";
 
 import {
   ArrowLeft,
@@ -20,7 +24,12 @@ import {
 import BookingSummary from "../../components/booking/BookingSummary.jsx";
 import Button from "../../components/common/Button.jsx";
 import Modal from "../../components/common/Modal.jsx";
-import { Field, Checkbox } from "../../components/common/Field.jsx";
+
+import {
+  Field,
+  Checkbox,
+} from "../../components/common/Field.jsx";
+
 import {
   EmptyState,
   ErrorState,
@@ -57,9 +66,16 @@ export default function CheckoutPage() {
 
   const nav = useNavigate();
   const toast = useToast();
+
   const { user } = useAuth();
 
-  const { hold, remaining, expired, clear, setCombo } = useBooking();
+  const {
+    hold,
+    remaining,
+    expired,
+    clear,
+    setCombo,
+  } = useBooking();
 
   const sid = hold.showtimeId;
 
@@ -96,27 +112,29 @@ export default function CheckoutPage() {
 
   const settings = settingsService.pricing();
 
-  const pricing = useMemo(() => {
-    if (!data) return null;
-
-    return calcPricing(
+  const pricing = useMemo(
+    () =>
+      data
+        ? calcPricing(
+            hold.seats,
+            data.showtime.price,
+            {
+              taxRate: settings.cinema.taxRate,
+              serviceFee: settings.system.serviceFee,
+            },
+            {
+              combo: hold.combo,
+            }
+          )
+        : null,
+    [
+      data,
       hold.seats,
-      data.showtime.price,
-      {
-        taxRate: settings.cinema.taxRate,
-        serviceFee: settings.system.serviceFee,
-      },
-      {
-        combo: hold.combo,
-      }
-    );
-  }, [
-    data,
-    hold.seats,
-    hold.combo,
-    settings.cinema.taxRate,
-    settings.system.serviceFee,
-  ]);
+      hold.combo,
+      settings.cinema.taxRate,
+      settings.system.serviceFee,
+    ]
+  );
 
   useEffect(() => {
     document.getElementById("main")?.scrollTo?.(0, 0);
@@ -127,18 +145,28 @@ export default function CheckoutPage() {
       <div className="max-w-xl mx-auto py-16 px-4">
         <EmptyState
           icon={TicketX}
-          title={expired ? "Your seat hold expired" : "No seats selected"}
+          title={
+            expired
+              ? "Your seat hold expired"
+              : "No seats selected"
+          }
           message={
             expired
-              ? "Seats are only held for 10 minutes. Choose your seats again to continue — nothing was charged."
+              ? "Seats are only held for a limited time. Choose your seats again to continue — nothing was charged."
               : "Pick a movie, showtime and seats before checking out."
           }
           action={
             <Link
-              to={expired ? `/booking/${expired}/seats` : "/movies"}
+              to={
+                expired
+                  ? `/booking/${expired}/seats`
+                  : "/movies"
+              }
               className="btn-primary"
             >
-              {expired ? "Select seats again" : "Browse movies"}
+              {expired
+                ? "Select seats again"
+                : "Browse movies"}
             </Link>
           }
         />
@@ -164,7 +192,7 @@ export default function CheckoutPage() {
 
   const { showtime } = data;
 
-  const setC = (key) => (event) => {
+  const setContactField = (key) => (event) => {
     setContact((current) => ({
       ...current,
       [key]: event.target.value,
@@ -178,34 +206,37 @@ export default function CheckoutPage() {
     setFormError("");
   };
 
-  const setK = (key, formatter = (value) => value) => (event) => {
-    setCard((current) => ({
-      ...current,
-      [key]: formatter(event.target.value),
-    }));
+  const setCardField =
+    (key, formatter = (value) => value) =>
+    (event) => {
+      setCard((current) => ({
+        ...current,
+        [key]: formatter(event.target.value),
+      }));
 
-    const errorKey = key === "number" ? "cardNumber" : key;
+      const errorKey =
+        key === "number" ? "cardNumber" : key;
 
-    setErrors((current) => ({
-      ...current,
-      [errorKey]: "",
-    }));
+      setErrors((current) => ({
+        ...current,
+        [errorKey]: "",
+      }));
 
-    setFormError("");
-  };
+      setFormError("");
+    };
 
-  const confirm = async (event) => {
-    event?.preventDefault();
-
-    setFormError("");
-
+  const validateForm = () => {
     const validationErrors = {};
 
     if (!contact.name.trim()) {
       validationErrors.name = "Full name is required";
     }
 
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(contact.email)) {
+    if (
+      !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(
+        contact.email
+      )
+    ) {
       validationErrors.email = "Enter a valid email address";
     }
 
@@ -214,13 +245,18 @@ export default function CheckoutPage() {
     }
 
     if (method === "card") {
-      if (!/^\d{13,19}$/.test(card.number.replace(/\s/g, ""))) {
+      if (
+        !/^\d{13,19}$/.test(
+          card.number.replace(/\s/g, "")
+        )
+      ) {
         validationErrors.cardNumber =
-          "Enter a valid card number (demo: 4242 4242 4242 4242)";
+          "Enter a valid demo card number";
       }
 
       if (!card.name.trim()) {
-        validationErrors.cardName = "Name on card is required";
+        validationErrors.cardName =
+          "Name on card is required";
       }
 
       if (!/^(0[1-9]|1[0-2])\/\d{2}$/.test(card.expiry)) {
@@ -228,7 +264,7 @@ export default function CheckoutPage() {
       }
 
       if (!/^\d{3,4}$/.test(card.cvc)) {
-        validationErrors.cvc = "3–4 digits";
+        validationErrors.cvc = "Enter 3–4 digits";
       }
     }
 
@@ -237,9 +273,19 @@ export default function CheckoutPage() {
         "Please accept the booking terms to continue";
     }
 
+    return validationErrors;
+  };
+
+  const confirm = async (event) => {
+    event?.preventDefault();
+
+    setFormError("");
+
+    const validationErrors = validateForm();
+
     setErrors(validationErrors);
 
-    if (Object.keys(validationErrors).length > 0) {
+    if (Object.keys(validationErrors).length) {
       toast.error("Please fix the highlighted fields.");
       return;
     }
@@ -247,44 +293,47 @@ export default function CheckoutPage() {
     setBusy(true);
 
     try {
-      // Backend currently accepts only showtimeId and seatsID.
-      // Contact, payment and combo are not persisted by the backend.
-      const booking = await bookingService.create({
+      // Only send data supported by the backend.
+      const createdBooking = await bookingService.create({
         showtimeId: sid,
         seats: hold.seats,
       });
 
-      const bookingId = booking?.id ?? booking?.booking?.id;
-
-      if (!bookingId) {
-        throw new Error("Booking was created but no booking ID was returned.");
-      }
-
-      store.set("lastBookingId", bookingId);
+      store.set(
+        "lastBookingId",
+        createdBooking.id
+      );
 
       clear();
 
-      toast.success(`Booking confirmed! Your ID is ${bookingId}.`);
+      toast.success(
+        `Booking confirmed! Your ID is ${createdBooking.id}.`
+      );
 
       nav("/booking-confirmation", {
         replace: true,
         state: {
-          id: bookingId,
+          id: createdBooking.id,
         },
       });
     } catch (err) {
-      setBusy(false);
-
-      if (err.status === 409 || err.code === "SEAT_TAKEN") {
-        toast.error(err.message || "One or more selected seats are no longer available.");
+      if (err.code === "SEAT_TAKEN") {
+        toast.error(err.message);
         nav(`/booking/${sid}/seats`);
-      } else if (err.errors) {
+        return;
+      }
+
+      if (err.errors) {
         setErrors(err.errors);
         toast.error(err.message);
       } else {
-        setFormError(err.message || "Unable to complete this booking.");
-        toast.error("Unable to complete this action.");
+        setFormError(err.message);
+        toast.error(
+          "Unable to complete this booking."
+        );
       }
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -308,7 +357,7 @@ export default function CheckoutPage() {
             </h1>
 
             <p className="text-body-sm text-on-surface-variant">
-              Secure demo checkout — no real payment is taken.
+              Demo checkout — no real payment is taken.
             </p>
           </div>
         </div>
@@ -321,10 +370,9 @@ export default function CheckoutPage() {
               : "border-white/10 bg-surface-container-low"
           }`}
         >
-          <Timer className="w-4 h-4 text-secondary" aria-hidden />
+          <Timer className="w-4 h-4 text-secondary" />
 
-          Seats held for
-
+          Seats held for{" "}
           <b className="tabular-nums" data-testid="hold-timer">
             {fmtClock(remaining)}
           </b>
@@ -347,7 +395,10 @@ export default function CheckoutPage() {
           )}
 
           {/* Contact information */}
-          <section className={section} aria-labelledby="c-contact">
+          <section
+            className={section}
+            aria-labelledby="c-contact"
+          >
             <h2
               id="c-contact"
               className="font-headline text-headline-sm text-white"
@@ -356,7 +407,7 @@ export default function CheckoutPage() {
             </h2>
 
             <p className="text-body-sm text-on-surface-variant">
-              Your e-ticket and receipt are sent here.
+              Contact details for your booking.
             </p>
 
             <div className="mt-4 grid sm:grid-cols-2 gap-4">
@@ -365,7 +416,7 @@ export default function CheckoutPage() {
                 label="Full name"
                 icon={User}
                 value={contact.name}
-                onChange={setC("name")}
+                onChange={setContactField("name")}
                 error={errors.name}
                 autoComplete="name"
                 required
@@ -376,7 +427,7 @@ export default function CheckoutPage() {
                 type="email"
                 icon={Mail}
                 value={contact.email}
-                onChange={setC("email")}
+                onChange={setContactField("email")}
                 error={errors.email}
                 autoComplete="email"
                 required
@@ -387,7 +438,7 @@ export default function CheckoutPage() {
                 type="tel"
                 icon={Phone}
                 value={contact.phone}
-                onChange={setC("phone")}
+                onChange={setContactField("phone")}
                 error={errors.phone}
                 autoComplete="tel"
                 required
@@ -410,7 +461,10 @@ export default function CheckoutPage() {
           </section>
 
           {/* Demo payment */}
-          <section className={section} aria-labelledby="c-pay">
+          <section
+            className={section}
+            aria-labelledby="c-pay"
+          >
             <h2
               id="c-pay"
               className="font-headline text-headline-sm text-white"
@@ -419,9 +473,8 @@ export default function CheckoutPage() {
             </h2>
 
             <p className="text-body-sm text-on-surface-variant">
-              Mock payment UI for the demo. Use card 4242 4242 4242 4242,
-              any future date, any CVC. A card ending in 0002 simulates a
-              decline.
+              Demo payment interface only. No payment gateway is
+              connected. Card details are not sent to the backend.
             </p>
 
             <div
@@ -448,7 +501,6 @@ export default function CheckoutPage() {
                         ? "text-primary-container"
                         : "text-on-surface-variant"
                     }`}
-                    aria-hidden
                   />
 
                   <span className="text-label-md text-white">
@@ -456,10 +508,7 @@ export default function CheckoutPage() {
                   </span>
 
                   {method === id && (
-                    <CheckCircle2
-                      className="w-4 h-4 ml-auto text-primary-container"
-                      aria-hidden
-                    />
+                    <CheckCircle2 className="w-4 h-4 ml-auto text-primary-container" />
                   )}
                 </button>
               ))}
@@ -473,12 +522,14 @@ export default function CheckoutPage() {
                   icon={CreditCard}
                   inputMode="numeric"
                   value={card.number}
-                  onChange={setK("number", (value) =>
-                    value
-                      .replace(/[^\d]/g, "")
-                      .slice(0, 19)
-                      .replace(/(.{4})/g, "$1 ")
-                      .trim()
+                  onChange={setCardField(
+                    "number",
+                    (value) =>
+                      value
+                        .replace(/\D/g, "")
+                        .slice(0, 19)
+                        .replace(/(.{4})/g, "$1 ")
+                        .trim()
                   )}
                   error={errors.cardNumber}
                   placeholder="4242 4242 4242 4242"
@@ -489,7 +540,7 @@ export default function CheckoutPage() {
                   className="sm:col-span-2"
                   label="Name on card"
                   value={card.name}
-                  onChange={setK("name")}
+                  onChange={setCardField("name")}
                   error={errors.cardName}
                   autoComplete="cc-name"
                 />
@@ -497,13 +548,18 @@ export default function CheckoutPage() {
                 <Field
                   label="Expiry (MM/YY)"
                   value={card.expiry}
-                  onChange={setK("expiry", (value) => {
-                    const digits = value.replace(/\D/g, "").slice(0, 4);
+                  onChange={setCardField(
+                    "expiry",
+                    (value) => {
+                      const digits = value
+                        .replace(/\D/g, "")
+                        .slice(0, 4);
 
-                    return digits.length > 2
-                      ? `${digits.slice(0, 2)}/${digits.slice(2)}`
-                      : digits;
-                  })}
+                      return digits.length > 2
+                        ? `${digits.slice(0, 2)}/${digits.slice(2)}`
+                        : digits;
+                    }
+                  )}
                   error={errors.expiry}
                   placeholder="08/29"
                   autoComplete="cc-exp"
@@ -513,8 +569,10 @@ export default function CheckoutPage() {
                 <Field
                   label="CVC"
                   value={card.cvc}
-                  onChange={setK("cvc", (value) =>
-                    value.replace(/\D/g, "").slice(0, 4)
+                  onChange={setCardField(
+                    "cvc",
+                    (value) =>
+                      value.replace(/\D/g, "").slice(0, 4)
                   )}
                   error={errors.cvc}
                   placeholder="123"
@@ -524,44 +582,30 @@ export default function CheckoutPage() {
               </div>
             ) : (
               <p className="mt-4 rounded-xl bg-surface-container-lowest/70 border border-white/5 p-4 text-body-sm text-on-surface-variant">
-                You’ll approve the payment of{" "}
-                <b className="text-white">{money(pricing.total)}</b> with
-                your{" "}
-                {method === "wallet" ? "digital wallet" : "mobile pay"} when
-                you confirm. (Simulated — no external window opens.)
+                Simulated payment method. No external payment
+                window opens.
               </p>
             )}
           </section>
 
           <Checkbox
             checked={agree}
-            onChange={(event) => {
-              setAgree(event.target.checked);
-
-              setErrors((current) => ({
-                ...current,
-                agree: "",
-              }));
-            }}
+            onChange={(event) =>
+              setAgree(event.target.checked)
+            }
             error={errors.agree}
-            label="I agree to the booking terms and the refund policy: full refund up to 2 hours before showtime."
+            label="I agree to the booking terms and refund policy."
           />
 
           <div className="hidden lg:flex items-center gap-4 text-label-sm text-on-surface-variant">
             <span className="flex items-center gap-1.5">
-              <Lock
-                className="w-4 h-4 text-secondary"
-                aria-hidden
-              />
-              256-bit SSL
+              <Lock className="w-4 h-4 text-secondary" />
+              Demo checkout
             </span>
 
             <span className="flex items-center gap-1.5">
-              <ShieldCheck
-                className="w-4 h-4 text-secondary"
-                aria-hidden
-              />
-              PCI-DSS Level 1 (production)
+              <ShieldCheck className="w-4 h-4 text-secondary" />
+              No real payment processing
             </span>
           </div>
         </div>
@@ -583,7 +627,7 @@ export default function CheckoutPage() {
                 type="submit"
                 className="w-full !py-3.5 !text-body-md"
                 loading={busy}
-                loadingText="Processing payment…"
+                loadingText="Confirming booking…"
                 icon={Lock}
               >
                 Confirm booking • {money(pricing.total)}
@@ -592,7 +636,7 @@ export default function CheckoutPage() {
           </div>
         </aside>
 
-        {/* Mobile bottom summary */}
+        {/* Mobile bottom checkout summary */}
         <div className="lg:hidden fixed bottom-0 inset-x-0 z-40 glass border-t border-white/10 pb-[env(safe-area-inset-bottom)]">
           <div className="px-4 py-3 flex items-center gap-3">
             <button
@@ -606,7 +650,7 @@ export default function CheckoutPage() {
                 {hold.seats.length === 1 ? "" : "s"} •{" "}
                 {hold.seats.map((seat) => seat.id).join(", ")}
 
-                <ChevronUp className="w-4 h-4 ml-auto" aria-hidden />
+                <ChevronUp className="w-4 h-4 ml-auto" />
               </p>
 
               <p className="font-headline text-headline-sm font-bold text-white">
@@ -618,7 +662,7 @@ export default function CheckoutPage() {
               type="submit"
               className="shrink-0"
               loading={busy}
-              loadingText="Processing…"
+              loadingText="Confirming…"
               icon={Lock}
             >
               Confirm

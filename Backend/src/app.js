@@ -6,7 +6,7 @@ import authRouter from "./Routes/auth.route.js";
 import movieRouter from "./Routes/movies.routes.js";
 import showTimeRouter from "./Routes/showtime.route.js";
 import bookingRouter from "./Routes/booking.routes.js";
-import seatRouter from "./routes/seat.routes.js";
+import seatRouter from "./Routes/seat.route.js";
 
 
 dotenv.config();

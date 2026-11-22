@@ -2,6 +2,8 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 
+
+import adminRouter from "./Routes/admin.route.js";
 import authRouter from "./Routes/auth.route.js";
 import movieRouter from "./Routes/movies.routes.js";
 import showTimeRouter from "./Routes/showtime.route.js";
@@ -38,7 +40,7 @@ app.use("/api/bookings", bookingRouter);
 app.use("/api/seats", seatRouter);
 // Showtime routes now use the same /api base URL.
 app.use("/api/showtime", showTimeRouter);
-
+app.use("/api/admin", adminRouter);
 app.use((req, res) => {
   res.status(404).json({
     message: "Route Not Found",
